@@ -1,0 +1,152 @@
+[
+ {
+  "file": "2610.09757v1.pdf",
+  "arxiv_id": "2610.09757v1",
+  "title": "EntroPrefill: Renyi-Guided Context Pruning with Conditional Stability Guarantees for Retrieval-Augmented Generation"
+ },
+ {
+  "file": "2610.09361v1.pdf",
+  "arxiv_id": "2610.09361v1",
+  "title": "From Chunks to Functional Evidence: Function-Aware Retrieval for EDA Documentation QA"
+ },
+ {
+  "file": "2610.09026v1.pdf",
+  "arxiv_id": "2610.09026v1",
+  "title": "BEACON-SP: Ontology-Grounded GraphRAG Framework for Clinical Suicide Risk Assessment"
+ },
+ {
+  "file": "2610.08571v1.pdf",
+  "arxiv_id": "2610.08571v1",
+  "title": "RAG-PIBench: A Leakage-Aware Benchmark for Prompt-Injection Detection in Trustworthy RAG Systems"
+ },
+ {
+  "file": "2610.07731v1.pdf",
+  "arxiv_id": "2610.07731v1",
+  "title": "Learning to Retrieve via Reinforcement Learning in Embedding Space"
+ },
+ {
+  "file": "2610.05826v1.pdf",
+  "arxiv_id": "2610.05826v1",
+  "title": "Bounded Provisional Visibility: Controlling Poisoning Exposure in Continuously Ingested RAG Vector Stores"
+ },
+ {
+  "file": "2610.05782v1.pdf",
+  "arxiv_id": "2610.05782v1",
+  "title": "Agentic-ZTA: A Multi-Agent Architecture for Autonomous Zero Trust Enforcement"
+ },
+ {
+  "file": "2610.05132v1.pdf",
+  "arxiv_id": "2610.05132v1",
+  "title": "SpecAgent: Empowering Program Verification with Agentic Synthesis of Formal Program Specifications"
+ },
+ {
+  "file": "2610.05034v1.pdf",
+  "arxiv_id": "2610.05034v1",
+  "title": "Agentic RAG Evaluation: Budget Allocation Across Questions, Trajectories, and Reads"
+ },
+ {
+  "file": "2610.04860v1.pdf",
+  "arxiv_id": "2610.04860v1",
+  "title": "Invisible Ink, Visible Lies: How Production Watermarking Causes LLMs to Hallucinate"
+ },
+ {
+  "file": "2610.04691v1.pdf",
+  "arxiv_id": "2610.04691v1",
+  "title": "RAGStress: A controlled benchmark for evaluating retrieval-augmented generation under knowledge-base degradation"
+ },
+ {
+  "file": "2610.04642v1.pdf",
+  "arxiv_id": "2610.04642v1",
+  "title": "Grounding Probes: Generator-Independent Hallucination Detection from Observer Model Hidden States"
+ },
+ {
+  "file": "2610.04026v1.pdf",
+  "arxiv_id": "2610.04026v1",
+  "title": "The TellTail of Embeddings: Fingerprinting Retrievers in Black-Box Systems"
+ },
+ {
+  "file": "2610.03999v2.pdf",
+  "arxiv_id": "2610.03999v2",
+  "title": "SERA-IDS: Structured Experience Retrieval-Augmented Intrusion Detection with Small Language Models"
+ },
+ {
+  "file": "2610.03632v1.pdf",
+  "arxiv_id": "2610.03632v1",
+  "title": "World Embedding Benchmark"
+ },
+ {
+  "file": "2610.02926v1.pdf",
+  "arxiv_id": "2610.02926v1",
+  "title": "Output Language Confusion under Multilingual Prompt Contamination"
+ },
+ {
+  "file": "2610.02627v1.pdf",
+  "arxiv_id": "2610.02627v1",
+  "title": "Lost in the Request: How Communication Variation Disrupts Retrieval and Action in Email Agents"
+ },
+ {
+  "file": "2610.02542v1.pdf",
+  "arxiv_id": "2610.02542v1",
+  "title": "How To Train Your World Model: Fine-tuning vs RAG for LM-based World Modeling"
+ },
+ {
+  "file": "2610.02510v1.pdf",
+  "arxiv_id": "2610.02510v1",
+  "title": "On-Premises Multi-Course RAG Tutoring for Business Education: Hardware-Software Trade-offs in a Campus AI Tutor"
+ },
+ {
+  "file": "2610.01936v2.pdf",
+  "arxiv_id": "2610.01936v2",
+  "title": "Rethinking Knowledge Retrieval for Generation: A Survey on RAG Architectures and Applications"
+ },
+ {
+  "file": "2610.01871v1.pdf",
+  "arxiv_id": "2610.01871v1",
+  "title": "Walking the Embedding Space: Datastore Extraction from Multimodal RAG"
+ },
+ {
+  "file": "2610.01767v1.pdf",
+  "arxiv_id": "2610.01767v1",
+  "title": "A Matryoshka Hierarchical RAG for Efficient Multi-Hop Question Answering"
+ },
+ {
+  "file": "2610.01324v1.pdf",
+  "arxiv_id": "2610.01324v1",
+  "title": "Evaluating Biomedical Reranking for LLM-Based Question Answering over Longitudinal Clinical Notes"
+ },
+ {
+  "file": "2610.01218v1.pdf",
+  "arxiv_id": "2610.01218v1",
+  "title": "AGO AI Quality Gate: Evidence-First Release Decisions for Retrieval-Augmented Generation"
+ },
+ {
+  "file": "2610.01058v1.pdf",
+  "arxiv_id": "2610.01058v1",
+  "title": "MOMAT: Mixture of Multiple Atlases for Low-Power Jailbreak Defense of Quantized LLMs"
+ },
+ {
+  "file": "2610.01027v1.pdf",
+  "arxiv_id": "2610.01027v1",
+  "title": "LawCompass: Navigating from Legal QA to Multi-Agent Deep Research with Grounded Evidence"
+ },
+ {
+  "file": "2610.00891v1.pdf",
+  "arxiv_id": "2610.00891v1",
+  "title": "Towards Retrieval Augmented Generation in High-Energy and Astroparticle Physics"
+ },
+ {
+  "file": "2610.00406v1.pdf",
+  "arxiv_id": "2610.00406v1",
+  "title": "LLM-as-a-Judge for Low-Resource Languages: Adapting Ragas and Comparative Ranking for Romanian"
+ },
+ {
+  "file": "2610.06902v1.pdf",
+  "arxiv_id": "2610.06902v1",
+  "title": "Tree Navigation Without LLM Summaries: A Matched-Cost Study of Hierarchical Retrieval for Long-Document QA"
+ },
+ {
+  "file": "2609.39075v1.pdf",
+  "arxiv_id": "2609.39075v1",
+  "title": "RAGScope: A Leakage-Controlled, Cost-Aware Evidence-Gating Protocol for RAG Hallucination Triage"
+ }
+]
