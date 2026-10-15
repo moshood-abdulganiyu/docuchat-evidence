@@ -3,7 +3,7 @@ from statistics import mean
 
 from src.chunking import chunk_page
 
-CONFIGS = [(500, 0.10), (800, 0.10), (800, 0.20)]
+CONFIGS = [(500, 0.10), (500, 0.20), (800, 0.10), (800, 0.20)]
 pages = [json.loads(line) for line in open("data/pages.jsonl", encoding="utf-8")]
 
 print("size overlap chunks mean_len pct_short pct_midsentence")

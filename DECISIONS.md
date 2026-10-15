@@ -15,3 +15,6 @@
 | 800 | 20% | 3713 | 688 | 0.3% | 17.1% |
 
 Choice: 800 characters, 20% overlap (provisional). Fewest fragments and, once the 538 forced page-end chunks are subtracted, about 2.6% avoidable mid-sentence cuts vs 10% for 500. Costs 11% more chunks than 800/10%. Chunks never cross pages so every citation maps to one page. To confirm with hit rate in step 4 and check MiniLM's 256-token truncation in step 3.
+
+Embeddings: Hugging Face Inference returned 402 and Gemini embeddings hit the 1,000 per day cap, so embeddings now run locally with fastembed.
+Chunk size: 500/20%, with the token table (800 = 11.3% over 256 tokens, 700 = 5.9%, 600 = 3.1%, 500 = 1.3%) as the evidence.
