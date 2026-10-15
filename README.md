@@ -2,14 +2,14 @@
 
 RAG app that answers questions over PDFs and cites the file name and page number for every answer. Demo mode runs over 30 recent arXiv papers, or you upload up to 5 PDFs (4 MB each). FastAPI, Pinecone, all-MiniLM-L6-v2 embeddings, Vercel. Includes a RAG vs no-retrieval baseline comparison, with retrieval metrics and answer metrics reported separately.
 
-> Work in progress. This README covers steps 1 to 3 of a 13-step build. Anything marked "planned" is not built yet, and no retrieval or answer quality numbers exist yet.
+> Work in progress. This README covers steps steps 1 to 4. Anything marked "planned" is not built yet, and no answer quality numbers exist yet.
 
 ## Status
 
 - [x] 1. Scaffold and project decisions
 - [x] 2. Corpus extraction and chunking experiment
 - [x] 3. Embed and index the demo corpus (6,100 vectors in Pinecone)
-- [ ] 4. Retrieval function and retrieval metrics
+- [x] 4. Retrieval function and retrieval metrics
 - [ ] 5. LLM module and no-retrieval baseline
 - [ ] 6. RAG generation with citations
 - [ ] 7. RAG vs baseline evaluation
@@ -40,7 +40,7 @@ flowchart LR
     S --> T[LLM answers from chunks only, with citations]
 ```
 
-Built so far: the boxes from the PDF corpus through Pinecone, for the demo namespace only. Planned: everything on the question side, per-session namespaces for uploads, and the LLM.
+Built so far: the boxes from the PDF corpus through Pinecone, for the demo namespace only. Planned: everything on the question side, per-session namespaces for uploads, and the LLM. Step 4 adds embed and search top-k in the namespace.
 
 ## Technology choices
 
@@ -66,9 +66,13 @@ docuchat-evidence/
     embeddings.py        embed(texts, kind="document" | "query"), normalized vectors
     store.py             get_index(): Pinecone index handle
     index_corpus.py      chunk, embed and upsert the demo corpus; --limit N, --check "question"
+    retrieve.py          top-k retrieval from a namespace
   eval/
     chunk_experiment.py  compares chunking configurations by structure
     token_check.py       counts MiniLM tokens per chunk against the 256-token limit
+    questions.jsonl
+    retrieval_eval.py
+    sample_passages.py
   data/
     manifest.json        list of downloaded papers (committed)
     pdfs/                downloaded PDFs (gitignored)
@@ -148,8 +152,7 @@ The last chunk on each page ends at the page boundary, so it counts as mid-sente
 Text past the 256-token limit is not represented in the vector, so those chunks cannot be retrieved by their tail. The gate was 3% of chunks over the limit. 800 fails at 11.3%, and the planned fallback of 700 also fails at 5.9%. 600 misses by 0.1 points.
 
 **Choice: 500 characters, 20% overlap.** It is the largest size that passes the 3% gate. The cost is 6,100 vectors instead of 3,713, and at least 10.6% avoidable mid-sentence cuts against 2.6% for 800/20%, because the sentence-snapping window is only 200 characters wide.
-
-**What will confirm or reverse this.** Step 4 compares 500/20% and 600/20% (the near-miss) on hit rate against a fixed question set. This README will be updated with that result.
+**What will confirm or reverse this.** The planned 600/20% comparison was not run. With 18 questions one question is 5.6 points, too coarse to separate two sizes that differ by about 1 to 2 questions. 500/20% stays, on the token-limit result above. Step 4 reports hit rate for 500/20% only (see below).
 
 ## Step 3: embed and index the demo corpus
 
@@ -171,20 +174,45 @@ uv run python -m eval.token_check "<path to tokenizer.json>"
 
 To re-index after changing the chunk size, delete the old vectors first so old ids do not sit beside the new ones:
 
-```powershell
+`powershell
 uv run python -c "from src.store import get_index; get_index().delete(delete_all=True, namespace='demo')"
 uv run python -m src.index_corpus
+`
+
+## Step 4: retrieval and hit rate
+
+```powershell
+uv run python -m src.retrieve "How is retrieval quality evaluated in RAG systems?" -k 5
+uv run python -m eval.retrieval_eval
 ```
+
+`src/retrieve.py` embeds the question as a query and returns the top-k chunks from a Pinecone namespace (the namespace is a parameter, for step 9). `eval/questions.jsonl` holds 18 questions, each written from a passage sampled from a different paper (`eval/sample_passages.py`, seed 7, reference-list pages skipped).
+
+A hit means a retrieved chunk is from the gold file and a gold page. Gold pages are every page of the gold paper that contains the answer string (`answer_patterns`), because headline facts repeat in the abstract, introduction, results and tables. For one question (q13) the contents page was excluded.
+
+| Run | k=3 file+page | k=5 file+page | file only (k=3 and 5) |
+|---|---:|---:|---:|
+| First run, one gold page per question | 10/18 (0.56) | 11/18 (0.61) | 17/18 (0.94) |
+| Gold pages from answer strings | 15/18 (0.83) | 16/18 (0.89) | 17/18 (0.94) |
+
+The change between the two rows is a labelling fix, not a retrieval improvement. Five questions (q02, q05, q07, q13, q14) gained extra valid pages after I read the first-run misses. That can only raise the score, so both rows are reported.
+
+Misses at k=5: q01 (answer is an affiliation line, no chunk from the paper returned) and q06 (right paper, but the top 5 chunks came from other pages; the p4 chunk naming the model was not returned). q04 hits only at rank 5.
+
+Limits of this number: 18 questions, so one question is 5.6 points; a hit means the right page was returned, not that the returned chunk contains the answer; the questions were written by one person.
 
 ## Known limits so far
 
-- No retrieval or answer quality result exists yet. The chunk size is justified by structure and token counts only.
+- No answer quality result exists yet. Retrieval hit rate is measured on 18 questions only (see step 4).
 - `pypdf` drops spaces and splits hyphenated words on some pages (retrieved passages showed "factualgrounding", "fortesting" and "guide- lines"). Not yet quantified or fixed. Changing extraction means re-indexing.
 - Two-column layouts can interleave columns. Not yet checked, and likely common in arXiv papers.
 - Scanned PDFs without a text layer produce no pages.
 - The corpus is whatever the arXiv query returned on the day it was run. `data/manifest.json` records which papers were used.
 - Planned for steps 5 and 9: Google may use free-tier Gemini inputs to improve its products, so the upload box and this README will carry a notice that uploaded text is sent to Google.
 - Not yet verified: Vercel bundle size and cold start with onnxruntime and the model file, Vercel body size and timeout limits, Pinecone and Gemini free-tier limits. All checked against current docs at steps 8 and 12.
+- pypdf glues table cells together ("0.7790.594", "86.4098.15100.00"), so numeric tables embed and match poorly.
+- Some pages contain garbled characters ("ΓÇó", "QueryΓåÆTop-k"). Cause not yet found (PDF or extraction).
+- Reference-list pages are indexed and can take top-k slots (seen once in a smoke test). Not measured as a cause of any miss here.
 
 ## Decisions log
 
