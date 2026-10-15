@@ -50,7 +50,7 @@ Built so far: the boxes from the PDF corpus through Pinecone, for the demo names
 | pypdf | Text extraction per page | Pure Python, runs inside a serverless function, gives page numbers directly |
 | fastembed (all-MiniLM-L6-v2, ONNX) | Embeddings, 384 dimensions, run locally | Hugging Face Inference returned 402 (no credits) and Gemini embeddings hit the free cap of 1,000 requests per day, counted per text, which cannot index 6,100 chunks or serve uploads. One model for demo and uploads |
 | Pinecone serverless | Vector store, index `docuchat`, 384 dimensions, cosine | Namespaces give per-session isolation without running a database |
-| gemini-2.5-flash | LLM for RAG and the baseline, behind one module `src/llm.py` | Free tier. One file to change if the provider changes (planned, step 5) |
+| gemini-3.5-flash-lite | LLM for RAG and the baseline, behind one module `src/llm.py` | Free tier. One file to change if the provider changes (planned, step 5) |
 | uv | Dependencies and lockfile | Reproducible installs from `uv.lock` |
 | Vercel | Deployment and cron cleanup | Planned, step 12 |
 
@@ -102,7 +102,7 @@ Fill in `.env`:
 | `PINECONE_API_KEY` | Pinecone access |
 | `PINECONE_INDEX` | Index name, `docuchat` |
 | `GEMINI_API_KEY` | LLM calls (step 5 onward) |
-| `LLM_MODEL` | `gemini-2.5-flash` |
+| `LLM_MODEL` | `gemini-3.5-flash-lite` |
 
 Create the Pinecone index once (384 dimensions, cosine):
 

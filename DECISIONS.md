@@ -6,7 +6,7 @@ Current choices are in the summary. Each entry below says what was decided, why,
 - Demo topic: arXiv papers on RAG and LLM evaluation, 2025-2026 (about 30 papers, list in data/manifest.json)
 - Embeddings: all-MiniLM-L6-v2 run locally with fastembed (ONNX), 384 dims, normalized
 - Vector store: Pinecone serverless, index `docuchat`, cosine, namespace `demo` (6,100 vectors)
-- LLM: gemini-2.5-flash behind src/llm.py (step 5)
+- LLM: gemini-3.5-flash-lite behind src/llm.py (step 5)
 - Chunking: 500 characters, 20% overlap, page-bounded
 - Python 3.12, dependencies with uv
 
@@ -50,8 +50,8 @@ Result: 10/18 (k=3) and 11/18 (k=5) before the fix, 15/18 and 16/18 after. File-
 Cost: relabelling after seeing results can only raise the score. Both sets of numbers are kept in the README.
 Revisit if: the question set grows, or step 7 shows chunk size matters.
 
-## LLM: gemini-2.5-flash
-Decision: gemini-2.5-flash for both RAG and the no-retrieval baseline, behind one module, src/llm.py.
+## LLM: gemini-3.5-flash-lite
+Decision: gemini-3.5-flash-lite for both RAG and the no-retrieval baseline, behind one module, src/llm.py.
 Reason: free tier, and one file to change if the provider changes.
 Cost: Google may use free-tier inputs to improve its products. The upload box and README will say that uploaded text is sent to Google.
 Revisit if: free-tier rate limits (not yet checked) block the evaluation runs.
