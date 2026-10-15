@@ -223,3 +223,4 @@ __marimo__/
 
 data/pdfs/
 data/pages.jsonl
+data/model_cache/
