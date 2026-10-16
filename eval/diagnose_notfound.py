@@ -21,10 +21,14 @@ def main() -> None:
             scores = [round(h["score"], 3) for h in res["retrieved"]]
             print(
                 r["id"],
-                "reason:", res["reason"],
-                "| chunks_used:", res["chunks_used"],
-                "| found on rerun:", res["found"],
-                "| scores:", scores,
+                "reason:",
+                res["reason"],
+                "| chunks_used:",
+                res["chunks_used"],
+                "| found on rerun:",
+                res["found"],
+                "| scores:",
+                scores,
             )
             if res["reason"] != "gate":
                 time.sleep(PAUSE_SECONDS)

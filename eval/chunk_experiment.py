@@ -12,4 +12,6 @@ for size, ov in CONFIGS:
     lens = [len(c) for c in chunks]
     short = sum(n < 200 for n in lens) / len(lens)
     mid = sum(c[-1] not in ".?!" for c in chunks) / len(chunks)
-    print(f"{size:>4} {ov:>6.0%} {len(chunks):>6} {mean(lens):>8.0f} {short:>9.1%} {mid:>15.1%}")
+    print(
+        f"{size:>4} {ov:>6.0%} {len(chunks):>6} {mean(lens):>8.0f} {short:>9.1%} {mid:>15.1%}"
+    )

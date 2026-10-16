@@ -1,6 +1,6 @@
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.llm import MODEL
@@ -24,7 +24,7 @@ def main() -> None:
         if q["id"] in done:
             continue
         res = rag_answer(q["question"])
-        res.update(id=q["id"], model=MODEL, timestamp=datetime.now(timezone.utc).isoformat())
+        res.update(id=q["id"], model=MODEL, timestamp=datetime.now(UTC).isoformat())
         with OUT.open("a", encoding="utf-8") as f:
             f.write(json.dumps(res, ensure_ascii=False) + "\n")
         flags = []

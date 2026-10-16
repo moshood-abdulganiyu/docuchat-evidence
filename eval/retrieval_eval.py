@@ -1,5 +1,6 @@
 """Hit rate at k. Gold pages: answer_patterns (pages matching all regexes, minus
 exclude_pages), else gold_pages (list), else gold_page (int)."""
+
 import argparse
 import json
 import re
@@ -18,7 +19,8 @@ for line in open("data/pages.jsonl", encoding="utf-8"):
 def gold_pages(q: dict) -> set[int]:
     if "answer_patterns" in q:
         found = {
-            page for page, text in PAGES.get(q["gold_file"], {}).items()
+            page
+            for page, text in PAGES.get(q["gold_file"], {}).items()
             if all(re.search(pat, text) for pat in q["answer_patterns"])
         }
         return found - set(q.get("exclude_pages", []))
@@ -41,21 +43,32 @@ def main() -> None:
     for q in qs:
         gp = gold_pages(q)
         hits = retrieve(q["question"], args.namespace, k=max(ks))
-        rank = next((i + 1 for i, h in enumerate(hits)
-                     if h["file"] == q["gold_file"] and h["page"] in gp), None)
-        frank = next((i + 1 for i, h in enumerate(hits)
-                      if h["file"] == q["gold_file"]), None)
+        rank = next(
+            (
+                i + 1
+                for i, h in enumerate(hits)
+                if h["file"] == q["gold_file"] and h["page"] in gp
+            ),
+            None,
+        )
+        frank = next(
+            (i + 1 for i, h in enumerate(hits) if h["file"] == q["gold_file"]), None
+        )
         for k in ks:
             page_hits[k] += rank is not None and rank <= k
             file_hits[k] += frank is not None and frank <= k
-        print(f"{q['id']}  page rank: {rank or '-'}  file rank: {frank or '-'}"
-              f"  gold pages: {sorted(gp)}")
+        print(
+            f"{q['id']}  page rank: {rank or '-'}  file rank: {frank or '-'}"
+            f"  gold pages: {sorted(gp)}"
+        )
 
     n = len(qs)
     print(f"\nnamespace={args.namespace}  questions={n}")
     for k in ks:
-        print(f"k={k}  file+page: {page_hits[k]}/{n} = {page_hits[k]/n:.2f}"
-              f"   file only: {file_hits[k]}/{n} = {file_hits[k]/n:.2f}")
+        print(
+            f"k={k}  file+page: {page_hits[k]}/{n} = {page_hits[k] / n:.2f}"
+            f"   file only: {file_hits[k]}/{n} = {file_hits[k] / n:.2f}"
+        )
 
 
 if __name__ == "__main__":
