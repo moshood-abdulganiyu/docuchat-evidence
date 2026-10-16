@@ -6,8 +6,10 @@ Current choices are in the summary. Each entry below says what was decided, why,
 - Demo topic: arXiv papers on RAG and LLM evaluation, 2025-2026 (about 30 papers, list in data/manifest.json)
 - Embeddings: all-MiniLM-L6-v2 run locally with fastembed (ONNX), 384 dims, normalized
 - Vector store: Pinecone serverless, index `docuchat`, cosine, namespace `demo` (6,100 vectors)
-- LLM: gemini-3.5-flash-lite behind src/llm.py (step 5)
+- LLM: gemini-3.5-flash-lite behind src/llm.py, temperature 0
 - Chunking: 500 characters, 20% overlap, page-bounded
+- Citations: the model cites passage numbers, code maps them to file and page
+- Evaluation: 17 questions, answers scored correct, abstained or wrong, retrieval reported separately
 - Python 3.12, dependencies with uv
 
 ## Embeddings: local fastembed instead of the Hugging Face API
@@ -41,7 +43,7 @@ Experiment 2, MiniLM reads at most 256 tokens (20% overlap):
 
 Decision: 500/20%, the largest size under the 3% gate. 800 fails at 11.3% and 700 at 5.9%.
 Cost: 6,100 vectors instead of 3,713, and at least 10.6% avoidable mid-sentence cuts against at least 2.6% for 800/20%.
-Revisit if: step 7 traces retrieval failures to chunk size, or the question set grows past about 50.
+Revisit if: step 7 traces retrieval failures to chunk size, or the question set grows past about 50. Step 6 found one question (q13) where the right page was returned but no chunk held the answer, which is a small sign that chunk boundaries matter. One case is not enough to change the size.
 
 ## Step 4: gold pages from answer strings; 600/20% comparison skipped
 Decision: a question's gold pages are all pages of the gold paper that contain its answer string (`answer_patterns` in eval/questions.jsonl), not the single page I picked. 500/20% stays, and the 600/20% comparison was not run.
@@ -51,7 +53,21 @@ Cost: relabelling after seeing results can only raise the score. Both sets of nu
 Revisit if: the question set grows, or step 7 shows chunk size matters.
 
 ## LLM: gemini-3.5-flash-lite
-Decision: gemini-3.5-flash-lite for both RAG and the no-retrieval baseline, behind one module, src/llm.py.
-Reason: free tier, and one file to change if the provider changes.
-Cost: Google may use free-tier inputs to improve its products. The upload box and README will say that uploaded text is sent to Google.
-Revisit if: free-tier rate limits (not yet checked) block the evaluation runs.
+Decision: gemini-3.5-flash-lite for both RAG and the no-retrieval baseline, behind one module, src/llm.py, at temperature 0.
+Reason: free tier, and one file to change if the provider changes. The first choice, gemini-2.5-flash, returned 404 on 2026-10-15 ("no longer available to new users"). gemini-3.8-flash was the suggested replacement, but its free quota is reported at about 20 requests per day, and the evaluation needs 36 or more calls (18 baseline, 18 RAG, plus reruns). The free quota of gemini-3.5-flash-lite was not confirmed in the AI Studio dashboard.
+Cost: a small model. A larger model may know more without retrieval, so the baseline comparison applies to this model only. Google may use free-tier inputs to improve its products. The upload box and README will say that uploaded text is sent to Google.
+Revisit if: free-tier rate limits block the evaluation runs, or the model is retired.
+
+## RAG: citations by passage number, score gate at 0.2
+Decision: the prompt numbers the retrieved chunks [1] to [5], the model cites those numbers, and the code maps each number to a file and page (one entry per distinct page). If no chunk scores at least `MIN_SCORE` (0.2), the model is not called. Otherwise the model must reply exactly `NOT_FOUND` when the passages do not contain the answer. Each result records a `reason` (gate, model or empty).
+Reason: a model that cites numbers cannot invent a file name or page. The gate saves quota on questions with no relevant chunk at all.
+Result: the gate filtered none of the 18 evaluation questions, and not the off-topic test question either (its top scores were 0.247 to 0.290). All 6 refusals in the evaluation came from the model.
+Cost: `MIN_SCORE` is a guess and is uncalibrated. A citation shows which chunk the model used, not that the chunk supports the claim.
+Revisit if: a calibration on more off-topic and in-domain questions shows a threshold that separates them, which the observed gap between 0.29 and about 0.49 suggests but one test does not prove.
+
+## Evaluation: 17 questions, three outcomes, gold page as citation check
+Decision: score answers as correct, abstained or wrong, on 17 questions with q05 excluded. Report retrieval hit rate (18 questions, step 4) in a separate row from answer correctness. Count a citation as good when the cited page is the gold page, the page the question was written from.
+Reason: the baseline says "I do not know." on most questions, and a "wrong" count would punish that unfairly. q05 is ambiguous (five values in the paper's table row for the 8B Llama model), and rewording it would have meant rerunning both systems. Checking every claim against its cited page by hand for all rows was too slow for this stage.
+Result: baseline 0 correct, 16 abstained, 1 wrong. RAG 11 correct, 6 abstained, 0 wrong. Citation on the gold page: 11 of 11 answered rows. 2 of the 11 answered rows were scored automatically from the gold string, 9 by hand.
+Cost: the citation measure is weaker than a claim-level check. The baseline comparison shows that retrieval lets the model answer papers it cannot know, not that retrieval beats a model that already knows the topic. 17 questions, so one question is 5.9 points. One person wrote the questions and scored the answers.
+Revisit if: the question set grows, an independent scorer is available, or questions are added on topics a model without retrieval could plausibly know.
