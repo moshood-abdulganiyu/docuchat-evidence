@@ -1,4 +1,5 @@
 """Download arXiv PDFs and extract text per page."""
+
 import json
 import re
 import sys
@@ -56,7 +57,9 @@ def extract() -> None:
                 text = re.sub(r"\s+", " ", page.extract_text() or "").strip()
                 if len(text) < 50:
                     continue
-                out.write(json.dumps({"file": pdf.name, "page": i, "text": text}) + "\n")
+                out.write(
+                    json.dumps({"file": pdf.name, "page": i, "text": text}) + "\n"
+                )
                 n_pages += 1
     print(n_pages, "pages written")
 

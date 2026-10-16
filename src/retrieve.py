@@ -1,4 +1,5 @@
 """Top-k retrieval from a Pinecone namespace."""
+
 import argparse
 
 from src.embeddings import embed

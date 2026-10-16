@@ -1,4 +1,5 @@
 """Embed text locally with all-MiniLM-L6-v2 via ONNX (fastembed). No API, no quota."""
+
 import numpy as np
 from fastembed import TextEmbedding
 
@@ -14,10 +15,16 @@ def _get_model() -> TextEmbedding:
     return _model
 
 
-def embed(texts: list[str], kind: str = "document", batch_size: int = 64) -> list[list[float]]:
+def embed(
+    texts: list[str], kind: str = "document", batch_size: int = 64
+) -> list[list[float]]:
     """kind is accepted for interface stability; MiniLM treats queries and documents the same."""
-    arr = np.asarray(list(_get_model().embed(texts, batch_size=batch_size)), dtype=np.float32)
+    arr = np.asarray(
+        list(_get_model().embed(texts, batch_size=batch_size)), dtype=np.float32
+    )
     if arr.shape != (len(texts), DIM):
-        raise ValueError(f"unexpected embedding shape {arr.shape}, expected {(len(texts), DIM)}")
+        raise ValueError(
+            f"unexpected embedding shape {arr.shape}, expected {(len(texts), DIM)}"
+        )
     arr /= np.linalg.norm(arr, axis=1, keepdims=True)
     return arr.tolist()

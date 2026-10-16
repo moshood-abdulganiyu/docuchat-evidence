@@ -53,15 +53,27 @@ def rag_answer(question: str, namespace: str = "demo", k: int = 5) -> dict:
         result["reason"] = "model"
         return result
 
-    numbers = [int(n) for n in re.findall(r"\[(\d+)\]", text)]
+    # Parse [1], [1][3] and [1, 5] forms.
+    numbers = [
+        int(n)
+        for group in re.findall(r"\[([\d,\s]+)\]", text)
+        for n in re.findall(r"\d+", group)
+    ]
     valid = sorted({n for n in numbers if 1 <= n <= len(chunks)})
+
+    # One citation per distinct file and page.
+    seen = set()
+    citations = []
+    for n in valid:
+        key = (chunks[n - 1]["file"], chunks[n - 1]["page"])
+        if key not in seen:
+            seen.add(key)
+            citations.append({"n": n, "file": key[0], "page": key[1]})
+
     result.update(
         found=True,
         answer=text,
-        citations=[
-            {"n": n, "file": chunks[n - 1]["file"], "page": chunks[n - 1]["page"]}
-            for n in valid
-        ],
+        citations=citations,
         invalid_citations=sorted({n for n in numbers if n not in valid}),
         uncited=not numbers,
     )

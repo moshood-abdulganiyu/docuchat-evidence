@@ -1,4 +1,5 @@
 """Chunk the demo corpus, embed it, and upsert into the Pinecone 'demo' namespace."""
+
 import argparse
 import json
 
@@ -38,7 +39,9 @@ def index_all(limit: int | None = None) -> None:
                 {
                     "id": r["id"],
                     "values": v,
-                    "metadata": {k: r[k] for k in ("file", "page", "chunk_index", "text")},
+                    "metadata": {
+                        k: r[k] for k in ("file", "page", "chunk_index", "text")
+                    },
                 }
                 for r, v in zip(batch, vectors)
             ],
@@ -50,7 +53,10 @@ def index_all(limit: int | None = None) -> None:
 
 def check(question: str) -> None:
     res = get_index().query(
-        vector=embed([question], kind="query")[0], top_k=3, namespace=NAMESPACE, include_metadata=True
+        vector=embed([question], kind="query")[0],
+        top_k=3,
+        namespace=NAMESPACE,
+        include_metadata=True,
     )
     for m in res.matches:
         md = m.metadata
