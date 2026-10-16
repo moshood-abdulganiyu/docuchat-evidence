@@ -33,17 +33,24 @@ def rag_answer(question: str, namespace: str = "demo", k: int = 5) -> dict:
             {"id": c["id"], "score": c["score"], "file": c["file"], "page": c["page"]}
             for c in hits
         ],
+        "chunks_used": len(chunks),
         "found": False,
+        "reason": None,
         "answer": NOT_FOUND,
         "citations": [],
         "invalid_citations": [],
         "uncited": False,
     }
     if not chunks:
+        result["reason"] = "gate"
         return result
 
     text = generate(build_prompt(question, chunks), system=SYSTEM).strip()
-    if not text or text.upper().startswith("NOT_FOUND"):
+    if not text:
+        result["reason"] = "empty"
+        return result
+    if text.upper().startswith("NOT_FOUND"):
+        result["reason"] = "model"
         return result
 
     numbers = [int(n) for n in re.findall(r"\[(\d+)\]", text)]
