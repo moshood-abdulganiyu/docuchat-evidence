@@ -13,7 +13,7 @@ RAG app that answers questions over PDFs and cites the file name and page number
 - [x] 5. LLM module and no-retrieval baseline
 - [x] 6. RAG generation with citations
 - [x] 7. RAG vs baseline evaluation
-- [ ] 8. FastAPI query endpoint
+- [x] 8. FastAPI query endpoint
 - [ ] 9. PDF upload with per-session namespaces
 - [ ] 10. Multi-turn chat with follow-up rewriting
 - [ ] 11. Frontend
@@ -63,7 +63,7 @@ Built so far: the boxes from the PDF corpus through Pinecone (demo namespace onl
 
 | Tool | Purpose | Why |
 |---|---|---|
-| FastAPI + Pydantic | API with typed request and response models | Automatic docs at `/docs`, validation at the boundary (planned, step 8) |
+| FastAPI + Pydantic | API with typed request and response models | Automatic docs at `/docs`, validation at the boundary Built in step 8. Typed models, validation at the boundary, docs at /docs |
 | pypdf | Text extraction per page | Pure Python, runs inside a serverless function, gives page numbers directly |
 | fastembed (all-MiniLM-L6-v2, ONNX) | Embeddings, 384 dimensions, run locally | Hugging Face Inference returned 402 (no credits) and Gemini embeddings hit the free cap of 1,000 requests per day, counted per text, which cannot index 6,100 chunks or serve uploads. One model for demo and uploads |
 | Pinecone serverless | Vector store, index `docuchat`, 384 dimensions, cosine | Namespaces give per-session isolation without running a database |
@@ -86,6 +86,8 @@ docuchat-evidence/
     retrieve.py          top-k retrieval from a namespace
     llm.py               generate(prompt, system=None): the only file that imports google-genai
     rag.py               rag_answer(question, namespace, k): retrieve, answer from chunks, cite
+    models.py            Pydantic request and response models
+    app.py               FastAPI app: GET /health, POST /query
   eval/
     chunk_experiment.py  compares chunking configurations by structure
     token_check.py       counts MiniLM tokens per chunk against the 256-token limit
@@ -108,7 +110,10 @@ docuchat-evidence/
     pdfs/                downloaded PDFs (gitignored)
     pages.jsonl          extracted text, one line per page (gitignored)
     model_cache/         embedding model files (gitignored)
-  api/ public/ screenshots/   empty until later steps
+  api/
+    index.py             Vercel entry point, re-exports app from src/app.py
+  tests/
+    test_api.py          12 API tests, no network (rag_answer is faked)
   DECISIONS.md           decisions with reasoning
   .env.example           environment variable names
   pyproject.toml, uv.lock
@@ -308,6 +313,26 @@ The gap between 0.89 retrieval and 0.65 correct answers is the 6 refusals descri
 - 17 questions, so one question is 5.9 points. One person wrote the questions and scored the answers.
 - Both systems use gemini-3.5-flash-lite, a small model. A larger model may know more without retrieval.
 
+
+## Step 8: query API
+
+```powershell
+uv run uvicorn src.app:app --reload
+```
+
+Open http://127.0.0.1:8000/docs for the interactive docs.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Returns `{"status": "ok"}` |
+| `POST /query` | Body: `question` (1 to 500 characters, whitespace trimmed), `k` (1 to 10, default 5). Returns `answer`, `found`, `reason`, `citations` (`n`, `file`, `page`), `uncited`, `retrieved` (`id`, `score`, `file`, `page`) |
+
+`/query` calls `rag_answer` on the `demo` namespace. The namespace is fixed on the server and is not a request field. Upload sessions arrive in step 9.
+
+Errors: invalid input returns 422. A Gemini rate limit (status 429) returns 503 with a short message. Any other failure returns 502 with a generic message. The full exception goes to the server log only.
+
+Tests: `uv run pytest -q` runs 12 tests (health, found, not found, parameters passed through, 6 validation cases, both error mappings). They fake `rag_answer`, so they check the API layer only. Retrieval and answer quality are measured by the eval scripts, not by these tests. Lint: `uv run ruff check .` and `uv run ruff format --check .` both pass on 29 files.
+
 ## Known limits so far
 
 - The answer results rest on 17 questions scored by one person (see step 7). Retrieval hit rate is on 18 questions.
@@ -325,6 +350,10 @@ The gap between 0.89 retrieval and 0.65 correct answers is the 6 refusals descri
 - pypdf glues table cells together ("0.7790.594", "86.4098.15100.00"), so numeric tables embed and match poorly.
 - Some pages contain garbled characters ("ΓÇó", "QueryΓåÆTop-k"). Cause not yet found (PDF or extraction).
 - Reference-list pages are indexed and can take top-k slots (seen once in a smoke test). Not measured as a cause of any miss here.
+- `/query` has no rate limiting or authentication. Anyone with the URL can use the Gemini free quota.
+- A rate-limited request can wait up to 75 s inside `llm.py` retries (5 + 10 + 20 + 40 s) before the API answers 503. Not yet checked against Vercel's function timeout.
+- Error mapping reads a `.code` attribute on the exception. It depends on how google-genai reports errors.
+- The question limit (500 characters) and k limit (10) are guesses, not tuned.
 
 ## Decisions log
 

@@ -71,3 +71,20 @@ Reason: the baseline says "I do not know." on most questions, and a "wrong" coun
 Result: baseline 0 correct, 16 abstained, 1 wrong. RAG 11 correct, 6 abstained, 0 wrong. Citation on the gold page: 11 of 11 answered rows. 2 of the 11 answered rows were scored automatically from the gold string, 9 by hand.
 Cost: the citation measure is weaker than a claim-level check. The baseline comparison shows that retrieval lets the model answer papers it cannot know, not that retrieval beats a model that already knows the topic. 17 questions, so one question is 5.9 points. One person wrote the questions and scored the answers.
 Revisit if: the question set grows, an independent scorer is available, or questions are added on topics a model without retrieval could plausibly know.
+
+
+## Step 8: query API
+
+**Namespace is not a request field.** The server pins `/query` to `demo`. A public field would let any caller read any namespace, including other people's uploads once step 9 exists. Step 9 adds a validated `session_id` instead. Cost: no way to query another namespace for testing without a code change.
+
+**`/query` is a plain `def`, not `async def`.** `rag_answer` blocks on Pinecone, Gemini and retry sleeps. FastAPI runs a plain `def` in a worker thread, so one slow request does not stop others. Cost: thread-pool limits apply under load.
+
+**Error mapping by status code, generic messages.** 429 becomes 503 (try again later), everything else becomes 502. The client never sees exception text, which could contain keys or internals. The full exception is logged. Cost: the client cannot tell a Pinecone failure from a Gemini failure.
+
+**Fixed input limits.** Question 1 to 500 characters, k 1 to 10. They bound cost per request. The numbers are not measured.
+
+**Tests fake `rag_answer`.** The 12 API tests run with no network and no keys, so they are fast (about 4 s) and safe for CI. They cannot catch retrieval or LLM regressions. Those stay with the eval scripts.
+
+**Entry point `api/index.py`.** It re-exports `app`, because current Vercel docs detect a FastAPI instance named `app`. Alternative: `tool.vercel.entrypoint` in `pyproject.toml`. To be confirmed on a preview deploy in step 12, including whether paths get an `/api` prefix.
+
+**Lint policy.** `SIM115` is ignored for `eval/**` only (short scripts that exit after reading). `B023` in `eval/auto_score.py` was fixed by binding `pats` as a default argument. Formatting changes to 26 files went in a separate commit so the step 8 diff stays readable.
