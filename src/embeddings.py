@@ -1,22 +1,37 @@
 """Embed text locally with all-MiniLM-L6-v2 via ONNX (fastembed). No API, no quota."""
 
 import os
+import tempfile
 
 import numpy as np
 from fastembed import TextEmbedding
 
 MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DIM = 384
-CACHE_DIR = os.environ.get("MODEL_CACHE_DIR") or (
-    "/tmp/model_cache" if os.environ.get("VERCEL") else "data/model_cache"
-)
 _model = None
+
+
+def _cache_dir() -> str:
+    """Env override first, then data/model_cache if writable, else the temp dir."""
+    override = os.environ.get("MODEL_CACHE_DIR")
+    if override:
+        return override
+    local = "data/model_cache"
+    try:
+        os.makedirs(local, exist_ok=True)
+        probe = os.path.join(local, ".write_test")
+        with open(probe, "w") as f:
+            f.write("x")
+        os.remove(probe)
+        return local
+    except OSError:
+        return os.path.join(tempfile.gettempdir(), "model_cache")
 
 
 def _get_model() -> TextEmbedding:
     global _model
     if _model is None:
-        _model = TextEmbedding(model_name=MODEL, cache_dir=CACHE_DIR)
+        _model = TextEmbedding(model_name=MODEL, cache_dir=_cache_dir())
     return _model
 
 
