@@ -333,6 +333,19 @@ Errors: invalid input returns 422. A Gemini rate limit (status 429) returns 503 
 
 Tests: `uv run pytest -q` runs 12 tests (health, found, not found, parameters passed through, 6 validation cases, both error mappings). They fake `rag_answer`, so they check the API layer only. Retrieval and answer quality are measured by the eval scripts, not by these tests. Lint: `uv run ruff check .` and `uv run ruff format --check .` both pass on 29 files.
 
+
+## Step 9: upload and sessions
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /upload` | Multipart: `file` (one PDF), optional `session_id`. Creates a session on first upload and returns its id. |
+| `POST /query` | Optional `session_id`. With it, the question is answered from that session only. Without it, from the demo corpus. |
+
+Limits: 4 MB per file, 5 files per session, one file per request, at most 800 chunks per file (a guess to bound embedding time). Files are parsed in memory and never written to disk. Session ids look like `sess_<unix_timestamp>_<16 hex chars>` and each session is its own Pinecone namespace. Queries never use a filter; isolation is by namespace only. Scanned PDFs without a text layer are rejected.
+
+**Privacy notice:** the text of uploaded PDFs is stored as vectors in Pinecone and sent to Google (Gemini) to answer questions. On the free tier, Google may use inputs to improve its products. Do not upload confidential documents.
+
+
 ## Known limits so far
 
 - The answer results rest on 17 questions scored by one person (see step 7). Retrieval hit rate is on 18 questions.
