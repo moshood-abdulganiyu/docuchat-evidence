@@ -10,11 +10,14 @@ SYSTEM = (
     "You answer questions using only the numbered passages provided. "
     "Rules: (1) Use no knowledge from outside the passages. "
     "(2) After every claim, cite the passage number in square brackets, like [2] or [1][3]. "
-    "(3) If the passages do not contain the answer, reply with exactly NOT_FOUND and nothing else. "
-    "(4) Be concise. Copy numbers exactly as written in the passage. "
-    "(5) Passages come from PDF extraction and may have missing spaces or glued table cells."
+    "(3) If the passages answer only part of the question, answer that part with citations, "
+    "then add one sentence saying which part the passages do not state. "
+    "Never guess or fill in the missing part. "
+    "(4) If the passages contain nothing that answers any part of the question, "
+    "reply with exactly NOT_FOUND and nothing else. "
+    "(5) Be concise. Copy numbers exactly as written in the passage. "
+    "(6) Passages come from PDF extraction and may have missing spaces or glued table cells."
 )
-
 
 def build_prompt(question: str, chunks: list[dict]) -> str:
     blocks = [
