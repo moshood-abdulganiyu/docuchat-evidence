@@ -4,7 +4,7 @@ import sys
 from src.llm import generate
 from src.retrieve import retrieve
 
-MIN_SCORE = 0.2
+MIN_SCORE = 0.10
 NOT_FOUND = "Not found in the documents."
 SYSTEM = (
     "You answer questions using only the numbered passages provided. "
