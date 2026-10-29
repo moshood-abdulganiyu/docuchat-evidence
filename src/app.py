@@ -1,3 +1,6 @@
+import time
+from src.logs import event
+
 import hmac
 import logging
 import os
@@ -138,6 +141,18 @@ def cron_cleanup(authorization: str | None = Header(default=None)):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return delete_expired()
 
+
+logging.basicConfig(level=logging.INFO)
+
+
+@app.middleware("http")
+async def access_log(request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    if request.url.path in ("/query", "/upload"):
+        ms = round((time.perf_counter() - start) * 1000)
+        event("request", path=request.url.path, status=response.status_code, ms=ms)
+    return response
 
 if not os.environ.get("VERCEL"):
     app.mount("/", StaticFiles(directory="public", html=True), name="public")
