@@ -74,6 +74,7 @@ def upload(
     if not data.startswith(b"%PDF-"):
         raise HTTPException(status_code=422, detail="File is not a PDF.")
 
+    session_id = (session_id or "").strip() or None
     if session_id is None:
         session_id, existing = new_session_id(), set()
     elif not is_valid_session_id(session_id):

@@ -14,8 +14,8 @@ RAG app that answers questions over PDFs and cites the file name and page number
 - [x] 6. RAG generation with citations
 - [x] 7. RAG vs baseline evaluation
 - [x] 8. FastAPI query endpoint
-- [ ] 9. PDF upload with per-session namespaces
-- [ ] 10. Multi-turn chat with follow-up rewriting
+- [x] 9. PDF upload with per-session namespaces
+- [x] 10. Multi-turn chat with follow-up rewriting
 - [ ] 11. Frontend
 - [ ] 12. Deploy, cron cleanup, CI
 - [ ] 13. Monitoring, README, screenshots
@@ -344,6 +344,10 @@ Tests: `uv run pytest -q` runs 12 tests (health, found, not found, parameters pa
 Limits: 4 MB per file, 5 files per session, one file per request, at most 800 chunks per file (a guess to bound embedding time). Files are parsed in memory and never written to disk. Session ids look like `sess_<unix_timestamp>_<16 hex chars>` and each session is its own Pinecone namespace. Queries never use a filter; isolation is by namespace only. Scanned PDFs without a text layer are rejected.
 
 **Privacy notice:** the text of uploaded PDFs is stored as vectors in Pinecone and sent to Google (Gemini) to answer questions. On the free tier, Google may use inputs to improve its products. Do not upload confidential documents.
+
+## Step 10: follow-ups
+
+`POST /query` accepts `history`: up to 20 messages (`role` user or assistant, `content` up to 2,000 characters). The server keeps the last 6, rewrites the question into a standalone one with the same model (`src/rewrite.py`), and uses the rewritten question for retrieval and answering. The response includes `rewritten_question`. With no history, no rewrite call is made. If the rewrite call fails, the original question is used. Follow-up quality is not measured yet.
 
 
 ## Known limits so far

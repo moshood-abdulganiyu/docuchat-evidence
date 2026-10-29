@@ -50,6 +50,7 @@ class QueryResponse(BaseModel):
     citations: list[Citation]
     uncited: bool = False
     retrieved: list[RetrievedChunk]
+    rewritten_question: str | None = None
 
 
 class HealthResponse(BaseModel):

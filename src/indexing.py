@@ -5,7 +5,7 @@ from src.store import get_index
 # PLACEHOLDERS: use the same values index_corpus.py passes to chunk_page.
 # README says 500 chars, 20% overlap. Check whether overlap_pct expects 20 or 0.2.
 CHUNK_SIZE = 500
-OVERLAP_PCT = 20
+OVERLAP_PCT = 0.20
 BATCH = 64
 
 
