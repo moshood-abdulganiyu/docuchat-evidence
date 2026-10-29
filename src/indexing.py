@@ -64,5 +64,6 @@ def list_session_files(namespace: str) -> set[str]:
     files = set()
     for ids in get_index().list(namespace=namespace):
         for vid in ids:
+            vid = getattr(vid, "id", vid)
             files.add(vid.rsplit(":p", 1)[0])
     return files
