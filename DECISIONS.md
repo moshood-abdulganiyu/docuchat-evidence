@@ -11,6 +11,10 @@ Current choices are in the summary. Each entry below says what was decided, why,
 - Citations: the model cites passage numbers, code maps them to file and page
 - Evaluation: 17 questions, answers scored correct, abstained or wrong, retrieval reported separately
 - Python 3.12, dependencies with uv
+- Sessions: `sess_<unix_timestamp>_<16 hex>` namespaces, strict regex, isolation by namespace only
+- Upload limits: 1 file per request, 4 MB, 5 files per session, 800 chunks per file
+- Chat history: browser sends up to 20 messages, server keeps the last 6, follow-ups rewritten with the same model
+- Frontend: plain HTML, CSS and JavaScript in `public/`, no framework
 
 ## Embeddings: local fastembed instead of the Hugging Face API
 Decision: embed locally with fastembed (Qdrant/all-MiniLM-L6-v2-onnx), cache in data/model_cache.
@@ -88,3 +92,23 @@ Revisit if: the question set grows, an independent scorer is available, or quest
 **Entry point `api/index.py`.** It re-exports `app`, because current Vercel docs detect a FastAPI instance named `app`. Alternative: `tool.vercel.entrypoint` in `pyproject.toml`. To be confirmed on a preview deploy in step 12, including whether paths get an `/api` prefix.
 
 **Lint policy.** `SIM115` is ignored for `eval/**` only (short scripts that exit after reading). `B023` in `eval/auto_score.py` was fixed by binding `pats` as a default argument. Formatting changes to 26 files went in a separate commit so the step 8 diff stays readable.
+
+## Step 9: sessions and uploads
+
+**Session ids are validated and never free text.** `session_id` must match `sess_<10 digits>_<16 hex>`, so a caller cannot pass `demo` or any other namespace name. The timestamp in the id is what the step 12 cron job will use to find sessions older than 24 hours. Cost: the id is a bearer secret. Anyone who has it can query that session.
+
+**Isolation is by namespace, with no metadata filter.** Each session is its own Pinecone namespace and `/query` passes it as the namespace. The isolation test uses a fake store, so it checks routing, not Pinecone itself. Real cross-session isolation is tested at step 12 on the deployed app.
+
+**File counts come from Pinecone, not a database.** The 5-file limit and the duplicate-name check list vector ids in the session namespace and read the file name from the id. This avoids running a database. Cost: listing is eventually consistent, so two fast uploads can slip past the limit.
+
+**Limits are guesses until measured.** 4 MB per file comes from the brief. 800 chunks per file bounds embedding time and is not measured. Revisit at step 12 with real embedding times and the Vercel body and timeout limits.
+
+**Bug found while testing: overlap unit.** `chunk_page` takes a fraction (0.20), and the first upload code passed 20. That made the window advance one character at a time and produced 3,439 chunks for a short PDF. Fixed to 0.20. The 800-chunk cap made the mistake visible instead of silently filling Pinecone.
+
+## Step 10: follow-ups
+
+**Rewrite with the same model, fall back to the original question.** A follow-up is rewritten into a standalone question before retrieval. With no history, no call is made. If the rewrite fails, the original question is used, so a rewrite failure never blocks an answer. The server keeps the last 6 messages regardless of what the browser sends (up to 20 accepted). Cost: one extra Gemini call per follow-up. Quality of the rewrites is not measured.
+
+## Step 11: frontend
+
+**Plain static files, no framework.** One page, three files, no build step. Answers and file names are rendered with `textContent`, never `innerHTML`, so model output cannot inject HTML. The session id lives in `sessionStorage`, so each tab is its own session. Cost: no component structure, and the voice features depend on browser support.

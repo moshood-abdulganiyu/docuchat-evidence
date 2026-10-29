@@ -2,7 +2,7 @@
 
 RAG app that answers questions over PDFs and cites the file name and page number for every answer. Demo mode runs over 30 recent arXiv papers, or you upload up to 5 PDFs (4 MB each). FastAPI, Pinecone, all-MiniLM-L6-v2 embeddings, Vercel. Includes a RAG vs no-retrieval baseline comparison, with retrieval metrics and answer metrics reported separately.
 
-> Work in progress. This README covers steps 1 to 7. Anything marked "planned" is not built yet. The retrieval and answer results below come from a small question set (17 to 18 questions), so read them as a first measurement, not a benchmark.
+> Work in progress. This README covers steps 1 to 11. Step 12 (deployment, cron cleanup, CI) and step 13 are not done, so there is no live link yet. The retrieval and answer results come from a small question set (17 to 18 questions), so read them as a first measurement, not a benchmark.
 
 ## Status
 
@@ -57,13 +57,14 @@ flowchart LR
     S --> T[LLM answers from chunks only, with citations]
 ```
 
-Built so far: the boxes from the PDF corpus through Pinecone (demo namespace only), embed and search top-k in the namespace (step 4), and the LLM answering from the retrieved chunks with citations (steps 5 and 6, single-turn). Planned: follow-up rewriting, per-session namespaces for uploads, and the API and frontend around all of it.
+Built so far: every box in the diagram, running locally, with the API (`/query`, `/upload`, `/health`) and a static frontend around it. Not built: deployment, session cleanup and CI (step 12). Upload sessions and follow-up rewriting work but have no quality measurement yet.
 
 ## Technology choices
 
 | Tool | Purpose | Why |
 |---|---|---|
-| FastAPI + Pydantic | API with typed request and response models | Automatic docs at `/docs`, validation at the boundary Built in step 8. Typed models, validation at the boundary, docs at /docs |
+| FastAPI + Pydantic | API with typed request and response models | Validation at the boundary, automatic docs at `/docs` |
+| Plain HTML, CSS and JavaScript (`public/`) | Chat UI, no framework | No build step. FastAPI serves it locally. How it is served on Vercel is to be confirmed at step 12 |
 | pypdf | Text extraction per page | Pure Python, runs inside a serverless function, gives page numbers directly |
 | fastembed (all-MiniLM-L6-v2, ONNX) | Embeddings, 384 dimensions, run locally | Hugging Face Inference returned 402 (no credits) and Gemini embeddings hit the free cap of 1,000 requests per day, counted per text, which cannot index 6,100 chunks or serve uploads. One model for demo and uploads |
 | Pinecone serverless | Vector store, index `docuchat`, 384 dimensions, cosine | Namespaces give per-session isolation without running a database |
@@ -87,7 +88,11 @@ docuchat-evidence/
     llm.py               generate(prompt, system=None): the only file that imports google-genai
     rag.py               rag_answer(question, namespace, k): retrieve, answer from chunks, cite
     models.py            Pydantic request and response models
-    app.py               FastAPI app: GET /health, POST /query
+    app.py               FastAPI app: GET /health, POST /query, POST /upload, serves public/ at /
+    sessions.py          session id format and validation, upload limits
+    pdf_pages.py         safe file names, PDF bytes to pages (same rules as corpus.py)
+    indexing.py          chunk, embed and upsert pages into a namespace; list files in a session
+    rewrite.py           rewrite a follow-up into a standalone question
   eval/
     chunk_experiment.py  compares chunking configurations by structure
     token_check.py       counts MiniLM tokens per chunk against the 256-token limit
@@ -112,8 +117,13 @@ docuchat-evidence/
     model_cache/         embedding model files (gitignored)
   api/
     index.py             Vercel entry point, re-exports app from src/app.py
+  public/
+    index.html, style.css, app.js   static chat frontend
   tests/
     test_api.py          12 API tests, no network (rag_answer is faked)
+    test_upload.py       upload limits, sessions, isolation (Pinecone and embeddings faked)
+    test_chat.py         history cap and follow-up rewriting
+    test_static.py       frontend files are served and do not shadow the API
   DECISIONS.md           decisions with reasoning
   .env.example           environment variable names
   pyproject.toml, uv.lock
@@ -138,6 +148,13 @@ Fill in `.env`:
 | `PINECONE_INDEX` | Index name, `docuchat` |
 | `GEMINI_API_KEY` | LLM calls (step 5 onward) |
 | `LLM_MODEL` | `gemini-3.5-flash-lite` |
+
+Run the app and open http://127.0.0.1:8000/ for the chat page, or http://127.0.0.1:8000/docs for the API:
+
+```powershell
+uv run uvicorn src.app:app --reload
+uv run pytest -q
+```
 
 Create the Pinecone index once (384 dimensions, cosine):
 
@@ -341,7 +358,7 @@ Tests: `uv run pytest -q` runs 12 tests (health, found, not found, parameters pa
 | `POST /upload` | Multipart: `file` (one PDF), optional `session_id`. Creates a session on first upload and returns its id. |
 | `POST /query` | Optional `session_id`. With it, the question is answered from that session only. Without it, from the demo corpus. |
 
-Limits: 4 MB per file, 5 files per session, one file per request, at most 800 chunks per file (a guess to bound embedding time). Files are parsed in memory and never written to disk. Session ids look like `sess_<unix_timestamp>_<16 hex chars>` and each session is its own Pinecone namespace. Queries never use a filter; isolation is by namespace only. Scanned PDFs without a text layer are rejected.
+Limits: 4 MB per file, 5 files per session, one file per request, at most 800 chunks per file (a guess to bound embedding time). Our code parses each PDF from bytes in memory. The web framework may spool uploads over about 1 MB to a temporary file, which is deleted when the request ends. Session ids look like `sess_<unix_timestamp>_<16 hex chars>` and each session is its own Pinecone namespace. Queries never use a filter; isolation is by namespace only. Scanned PDFs without a text layer are rejected.
 
 **Privacy notice:** the text of uploaded PDFs is stored as vectors in Pinecone and sent to Google (Gemini) to answer questions. On the free tier, Google may use inputs to improve its products. Do not upload confidential documents.
 
@@ -360,22 +377,29 @@ Voice limits: the mic button appears only in browsers that support the Web Speec
 - The answer results rest on 17 questions scored by one person (see step 7). Retrieval hit rate is on 18 questions.
 - 6 of 17 RAG answers were refusals. 3 are explained (answer text not in the retrieved chunks) and 3 (q03, q07, q16) are not.
 - Page-level hit rate overstates how often the answer reaches the model: q13 counted as a hit although no retrieved chunk contained the answer.
-- `MIN_SCORE` is 0.2 and uncalibrated. In one off-topic test the top scores were 0.247 to 0.290, so the gate did not filter that question. It filtered none of the 18 evaluation questions.
+- `MIN_SCORE` is 0.2 and uncalibrated. In one off-topic test the top scores were 0.247 to 0.290, so the gate did not filter that question. It filtered none of the 18 evaluation questions. Short, list-style text such as a CV scored 0.09 to 0.14 on a generic question, so the gate can also reject questions that are on topic.
 - The baseline comparison is weak by design: the questions name papers a model cannot know without retrieval.
 - Both systems use a small model, gemini-3.5-flash-lite.
 - `pypdf` drops spaces and splits hyphenated words on some pages (retrieved passages showed "factualgrounding", "fortesting" and "guide- lines"). Not yet quantified or fixed. Changing extraction means re-indexing.
 - Two-column layouts can interleave columns. Not yet checked, and likely common in arXiv papers.
-- Scanned PDFs without a text layer produce no pages.
+- Scanned PDFs without a text layer produce no pages, and uploads of them are rejected.
 - The corpus is whatever the arXiv query returned on the day it was run. `data/manifest.json` records which papers were used.
-- Google may use free-tier Gemini inputs to improve its products. The upload box and the final README will carry a notice that uploaded text is sent to Google (steps 9 and 13).
-- Gemini free-tier limits are shown only in AI Studio and change; gemini-2.5-flash stopped being available to new users on 2026-10-15. Not yet verified: Vercel bundle size and cold start with onnxruntime and the model file, Vercel body size and timeout limits, Pinecone free-tier limits. All checked against current docs at steps 8 and 12.
+- Google may use free-tier Gemini inputs to improve its products. The upload box and the step 9 section carry a notice that uploaded text is sent to Google.
+- Gemini free-tier limits are shown only in AI Studio and change; gemini-2.5-flash stopped being available to new users on 2026-10-15. Not yet verified: Vercel bundle size and cold start with onnxruntime and the model file, Vercel body size and timeout limits, Pinecone free-tier limits. All checked against current docs at step 12.
 - pypdf glues table cells together ("0.7790.594", "86.4098.15100.00"), so numeric tables embed and match poorly.
 - Some pages contain garbled characters ("ΓÇó", "QueryΓåÆTop-k"). Cause not yet found (PDF or extraction).
 - Reference-list pages are indexed and can take top-k slots (seen once in a smoke test). Not measured as a cause of any miss here.
-- `/query` has no rate limiting or authentication. Anyone with the URL can use the Gemini free quota.
+- `/query` and `/upload` have no rate limiting or authentication. Anyone with the URL can use the Gemini free quota and fill the Pinecone free tier.
 - A rate-limited request can wait up to 75 s inside `llm.py` retries (5 + 10 + 20 + 40 s) before the API answers 503. Not yet checked against Vercel's function timeout.
 - Error mapping reads a `.code` attribute on the exception. It depends on how google-genai reports errors.
 - The question limit (500 characters) and k limit (10) are guesses, not tuned.
+- The 5-file and duplicate-name checks count files by listing Pinecone ids, which is eventually consistent. Two rapid uploads can exceed 5 files or repeat a name.
+- The session id is the only access control. Anyone who has an id can query that session.
+- Expired sessions are not deleted yet (cron job planned in step 12).
+- The 800-chunk cap per file is a guess, not measured.
+- Each follow-up costs one extra Gemini call, which uses the free quota faster. Follow-up quality is not measured.
+- The frontend and the upload flow were checked by hand only, not by automated browser tests. Mic needs Chrome or Edge. Not tested on mobile.
+- Switching between demo and uploads clears the chat history sent to the server but not the visible thread. Uploads go one file at a time.
 
 ## Decisions log
 
