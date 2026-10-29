@@ -7,6 +7,7 @@ from src.indexing import ChunkLimitError, index_pages, list_session_files
 from src.models import HealthResponse, QueryRequest, QueryResponse, UploadResponse
 from src.pdf_pages import extract_pages, safe_filename
 from src.rag import rag_answer
+from src.rewrite import MAX_HISTORY, rewrite_question
 from src.sessions import (
     MAX_BYTES,
     MAX_CHUNKS_PER_FILE,
@@ -27,14 +28,16 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
-# Plain "def" on purpose: rag_answer blocks (Pinecone, Gemini, retry sleeps),
-# so FastAPI runs it in a worker thread instead of freezing the event loop.
 @app.post("/query", response_model=QueryResponse)
 def query(req: QueryRequest) -> QueryResponse:
     # session_id was validated by QueryRequest, so it can never be "demo".
     namespace = req.session_id if req.session_id else DEMO_NAMESPACE
+    history = req.history[-MAX_HISTORY:]
     try:
-        result = rag_answer(req.question, namespace=namespace, k=req.k)
+        standalone = (
+            rewrite_question(req.question, history) if history else req.question
+        )
+        result = rag_answer(standalone, namespace=namespace, k=req.k)
     except Exception as exc:
         log.exception("query failed")
         if getattr(exc, "code", None) == 429:
@@ -52,8 +55,8 @@ def query(req: QueryRequest) -> QueryResponse:
         citations=result["citations"],
         uncited=result["uncited"],
         retrieved=result["retrieved"],
+        rewritten_question=standalone if history else None,
     )
-
 
 
 @app.post("/upload", response_model=UploadResponse)

@@ -9,10 +9,18 @@ Question = Annotated[
 ]
 
 
+class Turn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
+    ]
+
+
 class QueryRequest(BaseModel):
     question: Question
     k: int = Field(default=5, ge=1, le=10)
     session_id: str | None = None
+    history: list[Turn] = Field(default_factory=list, max_length=20)
 
     @field_validator("session_id")
     @classmethod
