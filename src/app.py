@@ -1,4 +1,5 @@
 import logging
+from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
@@ -54,9 +55,11 @@ def query(req: QueryRequest) -> QueryResponse:
     )
 
 
+
 @app.post("/upload", response_model=UploadResponse)
 def upload(
-    file: UploadFile = File(...), session_id: str | None = Form(None)
+    file: Annotated[UploadFile, File()],
+    session_id: Annotated[str | None, Form()] = None,
 ) -> UploadResponse:
     name = safe_filename(file.filename or "")
     if not name.lower().endswith(".pdf"):

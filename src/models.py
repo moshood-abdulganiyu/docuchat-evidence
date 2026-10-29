@@ -1,8 +1,8 @@
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator
-from src.sessions import is_valid_session_id
 
+from src.sessions import is_valid_session_id
 
 Question = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
