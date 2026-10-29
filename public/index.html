@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DocuChat Evidence</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>DocuChat Evidence</h1>
+    <div class="toggle" role="group" aria-label="Source">
+      <button id="mode-demo" class="active" type="button">Demo papers</button>
+      <button id="mode-upload" type="button">My PDFs</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="chat">
+      <div id="upload-box" class="upload" hidden>
+        <label class="drop">
+          <input id="file-input" type="file" accept="application/pdf" multiple>
+          <span>Choose PDFs (max 5 per session, 4 MB each)</span>
+        </label>
+        <progress id="progress" max="100" value="0" hidden></progress>
+        <p id="upload-status" class="small" role="status"></p>
+        <ul id="file-list" class="files"></ul>
+        <p class="small notice">
+          Uploaded text is stored as vectors in Pinecone and sent to Google
+          (Gemini) to answer questions. On the free tier Google may use inputs
+          to improve its products. Do not upload confidential documents.
+          Sessions are deleted after 24 hours.
+        </p>
+      </div>
+
+      <div id="thread" class="thread" aria-live="polite">
+        <p class="hint" id="hint">
+          Ask a question about the 30 demo arXiv papers. Every answer cites the
+          file and page it used. If the papers do not contain the answer, the
+          app says so.
+        </p>
+      </div>
+
+      <div class="composer">
+        <input id="question" type="text" maxlength="500"
+               placeholder="Ask a question (max 500 characters)" autocomplete="off">
+        <button id="mic" type="button" title="Speak your question" hidden>Mic</button>
+        <button id="send" type="button">Send</button>
+      </div>
+      <p id="error" class="error" role="alert" hidden></p>
+    </section>
+
+    <aside class="sources">
+      <h2>Sources</h2>
+      <p id="sources-empty" class="small">Citations for the selected answer appear here.</p>
+      <ol id="sources-list"></ol>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

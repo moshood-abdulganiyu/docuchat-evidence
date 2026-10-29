@@ -1,4 +1,9 @@
 import logging
+
+from pathlib import Path
+
+from fastapi.staticfiles import StaticFiles
+
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -120,3 +125,8 @@ def upload(
         chunks=n_chunks,
         files_in_session=len(existing) + 1,
     )
+
+
+_PUBLIC = Path(__file__).resolve().parent.parent / "public"
+if _PUBLIC.is_dir():
+    app.mount("/", StaticFiles(directory=_PUBLIC, html=True), name="static")

@@ -16,7 +16,7 @@ RAG app that answers questions over PDFs and cites the file name and page number
 - [x] 8. FastAPI query endpoint
 - [x] 9. PDF upload with per-session namespaces
 - [x] 10. Multi-turn chat with follow-up rewriting
-- [ ] 11. Frontend
+- [x] 11. Frontend
 - [ ] 12. Deploy, cron cleanup, CI
 - [ ] 13. Monitoring, README, screenshots
 
@@ -349,6 +349,11 @@ Limits: 4 MB per file, 5 files per session, one file per request, at most 800 ch
 
 `POST /query` accepts `history`: up to 20 messages (`role` user or assistant, `content` up to 2,000 characters). The server keeps the last 6, rewrites the question into a standalone one with the same model (`src/rewrite.py`), and uses the rewritten question for retrieval and answering. The response includes `rewritten_question`. With no history, no rewrite call is made. If the rewrite call fails, the original question is used. Follow-up quality is not measured yet.
 
+## Step 11: frontend
+
+Static page in `public/` (`index.html`, `style.css`, `app.js`, no framework). Locally FastAPI serves it at `/`. Chat thread, citations panel, upload box with a progress bar, demo/My PDFs toggle, mic input (Web Speech API) and read-aloud (speech synthesis). The browser sends the last 6 messages as `history` and keeps the session id in `sessionStorage`, so a new tab starts a new session. Answers are rendered as plain text.
+
+Voice limits: the mic button appears only in browsers that support the Web Speech API (Chrome and Edge). In Chrome, the audio is processed by the browser vendor's speech service, not by this app. Read-aloud voices depend on the operating system. Not tested on mobile.
 
 ## Known limits so far
 
