@@ -1,8 +1,10 @@
 # DocuChat Evidence
 
-RAG app that answers questions over PDFs and cites the file name and page number for every answer. Demo mode runs over 30 recent arXiv papers, or you upload up to 5 PDFs (4 MB each). FastAPI, Pinecone, all-MiniLM-L6-v2 embeddings, Vercel. Includes a RAG vs no-retrieval baseline comparison, with retrieval metrics and answer metrics reported separately.
+RAG app that answers questions over PDFs and cites the file name and page number for every answer. Demo mode runs over 30 recent arXiv papers, or you upload up to 5 PDFs (4 MB each) into a private session. FastAPI, Pinecone, all-MiniLM-L6-v2 embeddings, Gemini, Vercel. Includes a RAG vs no-retrieval baseline comparison, with retrieval metrics and answer metrics reported separately.
 
-> Work in progress. This README covers steps 1 to 11. Step 12 (deployment, cron cleanup, CI) and step 13 are not done, so there is no live link yet. The retrieval and answer results come from a small question set (17 to 18 questions), so read them as a first measurement, not a benchmark.
+**Live:** https://docuchat-evidence.vercel.app (interactive API docs at `/docs`)
+
+> Steps 1 to 12 are built and deployed. Step 13 (monitoring, screenshots, final polish) is in progress. The retrieval and answer results below come from a small question set (17 to 18 questions), so read them as a first measurement, not a benchmark. The evaluation was run before two changes made during deployment (score gate 0.2 to 0.10, and a prompt that allows partial answers), so the table describes the earlier version. See "Changes found during deployment".
 
 ## Status
 
@@ -17,8 +19,8 @@ RAG app that answers questions over PDFs and cites the file name and page number
 - [x] 9. PDF upload with per-session namespaces
 - [x] 10. Multi-turn chat with follow-up rewriting
 - [x] 11. Frontend
-- [ ] 12. Deploy, cron cleanup, CI
-- [ ] 13. Monitoring, README, screenshots
+- [x] 12. Deploy on Vercel, cron cleanup, CI
+- [ ] 13. Monitoring, README, screenshots (request logs done; retrieval and LLM error fields and screenshots planned)
 
 ## Problem
 
@@ -41,36 +43,40 @@ Same model (gemini-3.5-flash-lite), same 17 questions, answers scored by hand as
 | Answers correct, RAG (17 questions) | 11/17 (0.65) |
 | Citation on the gold page, answered RAG rows | 11/11 |
 
-Details, limits and how the scoring was done are in step 7 below.
+These numbers were produced with the step 6 prompt and a score gate of 0.2. The live app now uses a gate of 0.10 and a prompt that allows partial answers. The evaluation has not been rerun. Details, limits and how the scoring was done are in step 7 below.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[PDF corpus or upload] --> B[Text extraction per page]
-    B --> C[Chunking, page-bounded, 500 chars, 20% overlap]
-    C --> D[Embeddings, all-MiniLM-L6-v2, local via fastembed]
-    D --> E[(Pinecone, one namespace per session)]
-    Q[Question] --> R[Rewrite follow-up, last 6 turns]
-    R --> S[Embed and search top-k in the session namespace]
-    E --> S
-    S --> T[LLM answers from chunks only, with citations]
+    B["Browser: chat, upload, mic, read-aloud"] -->|"POST /upload (one PDF)"| U["Parse pages, chunk 500 chars, 20% overlap"]
+    U --> E["Embeddings: all-MiniLM-L6-v2, fastembed"]
+    E --> P[("Pinecone: demo + one namespace per session")]
+    B -->|"POST /query (question, history, session id)"| R["Rewrite follow-up, last 6 turns"]
+    R --> S["Embed question, top-5 in session or demo namespace"]
+    P --> S
+    S --> G["Score gate 0.10"]
+    G --> L["Gemini answers from chunks only, with citations"]
+    L --> B
+    C["Vercel Cron, daily"] --> D["/api/cron/cleanup: delete sessions older than 24 h"]
+    D --> P
 ```
 
-Built so far: every box in the diagram, running locally, with the API (`/query`, `/upload`, `/health`) and a static frontend around it. Not built: deployment, session cleanup and CI (step 12). Upload sessions and follow-up rewriting work but have no quality measurement yet.
+The whole app, API and static page, is one Vercel Function. The embedding model (about 87 MiB) downloads into `/tmp` on the first request after a cold start.
 
 ## Technology choices
 
 | Tool | Purpose | Why |
 |---|---|---|
-| FastAPI + Pydantic | API with typed request and response models | Validation at the boundary, automatic docs at `/docs` |
-| Plain HTML, CSS and JavaScript (`public/`) | Chat UI, no framework | No build step. FastAPI serves it locally. How it is served on Vercel is to be confirmed at step 12 |
-| pypdf | Text extraction per page | Pure Python, runs inside a serverless function, gives page numbers directly |
+| FastAPI + Pydantic | API with typed request and response models | Automatic docs at `/docs`, validation at the boundary |
+| pypdf | Text extraction per page, from bytes for uploads | Pure Python, runs inside a serverless function, gives page numbers directly |
 | fastembed (all-MiniLM-L6-v2, ONNX) | Embeddings, 384 dimensions, run locally | Hugging Face Inference returned 402 (no credits) and Gemini embeddings hit the free cap of 1,000 requests per day, counted per text, which cannot index 6,100 chunks or serve uploads. One model for demo and uploads |
 | Pinecone serverless | Vector store, index `docuchat`, 384 dimensions, cosine | Namespaces give per-session isolation without running a database |
-| gemini-3.5-flash-lite (google-genai) | LLM for RAG and the baseline, behind one module `src/llm.py` | Free tier. One file to change if the provider changes. gemini-2.5-flash was the first choice and returned 404 ("no longer available to new users") on 2026-10-15. gemini-3.8-flash was not used because its free quota is reported at about 20 requests per day, and the evaluation needs 36 or more calls |
+| gemini-3.5-flash-lite (google-genai) | LLM for RAG, rewriting and the baseline, behind one module `src/llm.py` | Free tier. One file to change if the provider changes. gemini-2.5-flash was the first choice and returned 404 ("no longer available to new users") on 2026-10-15. gemini-3.8-flash was not used because its free quota is reported at about 20 requests per day, and the evaluation needs 36 or more calls |
+| Static HTML, CSS, JS | Frontend in `public/` | One page, no build step, no framework |
 | uv | Dependencies and lockfile | Reproducible installs from `uv.lock` |
-| Vercel | Deployment and cron cleanup | Planned, step 12 |
+| Vercel | Hosting, cron cleanup | Git push deploys, cron on production deployments, `public/` served from the CDN |
+| GitHub Actions | CI | ruff check, ruff format --check and pytest on every push and pull request |
 
 The embedding change and the LLM model change from the original brief are recorded in [DECISIONS.md](DECISIONS.md).
 
@@ -80,54 +86,38 @@ The embedding change and the LLM model change from the original brief are record
 docuchat-evidence/
   src/
     corpus.py            download arXiv PDFs, extract text per page
-    chunking.py          page-bounded chunking: chunk_page(text, size, overlap_pct)
-    embeddings.py        embed(texts, kind="document" | "query"), normalized vectors
+    chunking.py          page-bounded chunking: chunk_page(text, size, overlap_fraction)
+    embeddings.py        embed(texts, kind="document" | "query"), normalized vectors, model cache path
     store.py             get_index(): Pinecone index handle
     index_corpus.py      chunk, embed and upsert the demo corpus; --limit N, --check "question"
     retrieve.py          top-k retrieval from a namespace
     llm.py               generate(prompt, system=None): the only file that imports google-genai
-    rag.py               rag_answer(question, namespace, k): retrieve, answer from chunks, cite
+    rag.py               rag_answer(question, namespace, k): retrieve, gate, answer from chunks, cite
+    sessions.py          session ids, validation, limits (5 files, 4 MiB, 800 chunks per file)
+    pdf_pages.py         safe_filename(), extract_pages(data, filename)
+    indexing.py          build_chunks, index_pages, list_session_files
+    rewrite.py           rewrite_question(question, history), last 6 turns
+    cleanup.py           expired_sessions, delete_expired
+    logs.py              event(): one JSON log line
     models.py            Pydantic request and response models
-    app.py               FastAPI app: GET /health, POST /query, POST /upload, serves public/ at /
-    sessions.py          session id format and validation, upload limits
-    pdf_pages.py         safe file names, PDF bytes to pages (same rules as corpus.py)
-    indexing.py          chunk, embed and upsert pages into a namespace; list files in a session
-    rewrite.py           rewrite a follow-up into a standalone question
-  eval/
-    chunk_experiment.py  compares chunking configurations by structure
-    token_check.py       counts MiniLM tokens per chunk against the 256-token limit
-    questions.jsonl      18 questions with gold file, gold page and, for some, answer_patterns
-    retrieval_eval.py    hit rate at k=3 and k=5
-    sample_passages.py   samples passages to write questions from
-    baseline.py          no-retrieval answers for every question
-    baseline_answers.jsonl
-    rag_answers.py       RAG answers for every question, with retrieved ids and scores
-    rag_answers.jsonl
-    diagnose_notfound.py reruns the "not found" questions and records why
-    diagnose_refusals.py checks whether answer strings are in the retrieved chunks
-    recite.py            recomputes citations in rag_answers.jsonl without model calls
-    make_sheet.py        builds scoring_sheet.csv from the questions and both answer files
-    auto_score.py        marks answers and citations that contain the gold string
-    finish_scores.py     applies hand judgments and prints the answer metrics
-    scoring_sheet.csv    the scored results, one row per question
+    app.py               FastAPI app: /health, /query, /upload, /api/cron/cleanup
+  public/
+    index.html, style.css, app.js
+  eval/                  question set, baseline, RAG answers, scoring scripts (see steps 4 to 7)
   data/
     manifest.json        list of downloaded papers (committed)
     pdfs/                downloaded PDFs (gitignored)
     pages.jsonl          extracted text, one line per page (gitignored)
     model_cache/         embedding model files (gitignored)
-  api/
-    index.py             Vercel entry point, re-exports app from src/app.py
-  public/
-    index.html, style.css, app.js   static chat frontend
-  tests/
-    test_api.py          12 API tests, no network (rag_answer is faked)
-    test_upload.py       upload limits, sessions, isolation (Pinecone and embeddings faked)
-    test_chat.py         history cap and follow-up rewriting
-    test_static.py       frontend files are served and do not shadow the API
+  tests/                 test_api, test_upload, test_chat, test_static, test_cleanup, test_cron, test_indexing_list
+  .github/workflows/ci.yml
+  vercel.json            cron schedule
   DECISIONS.md           decisions with reasoning
   .env.example           environment variable names
   pyproject.toml, uv.lock
 ```
+
+`eval/` holds: `chunk_experiment.py`, `token_check.py`, `questions.jsonl` (18 questions with gold file, gold page and, for some, answer_patterns), `retrieval_eval.py`, `sample_passages.py`, `baseline.py`, `baseline_answers.jsonl`, `rag_answers.py`, `rag_answers.jsonl`, `diagnose_notfound.py`, `diagnose_refusals.py`, `recite.py`, `make_sheet.py`, `auto_score.py`, `finish_scores.py` and `scoring_sheet.csv`.
 
 ## Setup
 
@@ -146,20 +136,30 @@ Fill in `.env`:
 |---|---|
 | `PINECONE_API_KEY` | Pinecone access |
 | `PINECONE_INDEX` | Index name, `docuchat` |
-| `GEMINI_API_KEY` | LLM calls (step 5 onward) |
+| `GEMINI_API_KEY` | LLM calls |
 | `LLM_MODEL` | `gemini-3.5-flash-lite` |
-
-Run the app and open http://127.0.0.1:8000/ for the chat page, or http://127.0.0.1:8000/docs for the API:
-
-```powershell
-uv run uvicorn src.app:app --reload
-uv run pytest -q
-```
 
 Create the Pinecone index once (384 dimensions, cosine):
 
 ```powershell
 uv run python -c "from pinecone import Pinecone, ServerlessSpec; import os; from dotenv import load_dotenv; load_dotenv(); pc = Pinecone(api_key=os.environ['PINECONE_API_KEY']); pc.create_index(name='docuchat', dimension=384, metric='cosine', spec=ServerlessSpec(cloud='aws', region='us-east-1')); print(pc.describe_index('docuchat'))"
+```
+
+Index the demo corpus, then run the app (the page is at http://127.0.0.1:8000/ and the docs at `/docs`):
+
+```powershell
+uv run python -m src.corpus download
+uv run python -m src.corpus extract
+uv run python -m src.index_corpus
+uv run uvicorn src.app:app --reload
+```
+
+Checks, one per line:
+
+```powershell
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest -q
 ```
 
 ## Step 2: build the corpus and run the chunking experiment
@@ -238,7 +238,7 @@ uv run python -m src.retrieve "How is retrieval quality evaluated in RAG systems
 uv run python -m eval.retrieval_eval
 ```
 
-`src/retrieve.py` embeds the question as a query and returns the top-k chunks from a Pinecone namespace (the namespace is a parameter, for step 9). `eval/questions.jsonl` holds 18 questions, each written from a passage sampled from a different paper (`eval/sample_passages.py`, seed 7, reference-list pages skipped).
+`src/retrieve.py` embeds the question as a query and returns the top-k chunks from a Pinecone namespace (the namespace is a parameter, used for session isolation in step 9). `eval/questions.jsonl` holds 18 questions, each written from a passage sampled from a different paper (`eval/sample_passages.py`, seed 7, reference-list pages skipped).
 
 A hit means a retrieved chunk is from the gold file and a gold page. Gold pages are every page of the gold paper that contains the answer string (`answer_patterns`), because headline facts repeat in the abstract, introduction, results and tables. For one question (q13) the contents page was excluded.
 
@@ -274,8 +274,8 @@ uv run python -m eval.rag_answers
 
 `src/rag.py` has `rag_answer(question, namespace="demo", k=5)`:
 
-1. Retrieve the top 5 chunks and drop any scoring under `MIN_SCORE` (0.2, not calibrated). If none are left, return "Not found in the documents." without calling the model, with `reason` set to `gate`.
-2. Otherwise number the remaining chunks `[1]` to `[5]` in the prompt, each with its file and page. The system prompt allows only the passages as a source, requires a passage number after every claim, and requires the exact reply `NOT_FOUND` when the passages do not contain the answer. That reply is recorded with `reason` set to `model`. An empty reply is recorded as `empty`.
+1. Retrieve the top 5 chunks and drop any scoring under `MIN_SCORE`. It was 0.2 when the evaluation was run and is 0.10 since step 12. If none are left, return "Not found in the documents." without calling the model, with `reason` set to `gate`.
+2. Otherwise number the remaining chunks `[1]` to `[5]` in the prompt, each with its file and page. The system prompt allows only the passages as a source and requires a passage number after every claim. When the passages contain nothing that answers the question, the model must reply with the exact text `NOT_FOUND`, recorded with `reason` set to `model`. During the evaluation, the prompt required `NOT_FOUND` whenever the passages did not fully answer the question. Since step 12 it may answer the supported part and name what is missing. An empty reply is recorded as `empty`.
 3. The code reads the cited numbers (forms `[1]`, `[1][3]` and `[1, 5]`) and maps each to a file and page, one entry per distinct page. A number outside the range is recorded as `invalid_citations`, and an answer with no numbers is flagged `uncited`.
 
 Citing by number means the model cannot invent a file name or page: the citation list comes from the chunks it was shown. A first version of the parser missed the `[1, 5]` form and listed a page twice when two chunks came from it. Both were fixed, and the saved answers were recomputed offline with `eval/recite.py`.
@@ -301,7 +301,7 @@ The off-topic scores are above the 0.2 gate, so that refusal came from the model
 | q07 | The answer string 0.798 is in a retrieved chunk and the model still refused. Cause not found. |
 | q03, q16 | No answer string recorded, so the check could not run. Cause not found. |
 
-So 3 of the 6 refusals are correct (the answer never reached the model), and 3 are unexplained. I stopped the diagnosis there and did not change the prompt.
+So 3 of the 6 refusals are correct (the answer never reached the model), and 3 are unexplained. I stopped the diagnosis there and did not change the prompt. A later finding (see "Changes found during deployment") shows the all-or-nothing prompt rule made the model refuse a question whose answer was only partly in the passages. That may explain some of the three, but I did not check.
 
 ## Step 7: RAG vs no-retrieval baseline
 
@@ -329,7 +329,7 @@ The gap between 0.89 retrieval and 0.65 correct answers is the 6 refusals descri
 - Citation accuracy means the cited page is the page the question was written from. That is weaker than checking every claim in the answer.
 - 17 questions, so one question is 5.9 points. One person wrote the questions and scored the answers.
 - Both systems use gemini-3.5-flash-lite, a small model. A larger model may know more without retrieval.
-
+- The table was produced before the step 12 changes to the score gate and the prompt, and has not been rerun.
 
 ## Step 8: query API
 
@@ -342,68 +342,97 @@ Open http://127.0.0.1:8000/docs for the interactive docs.
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | Returns `{"status": "ok"}` |
-| `POST /query` | Body: `question` (1 to 500 characters, whitespace trimmed), `k` (1 to 10, default 5). Returns `answer`, `found`, `reason`, `citations` (`n`, `file`, `page`), `uncited`, `retrieved` (`id`, `score`, `file`, `page`) |
-
-`/query` calls `rag_answer` on the `demo` namespace. The namespace is fixed on the server and is not a request field. Upload sessions arrive in step 9.
+| `POST /query` | Body: `question` (1 to 500 characters, whitespace trimmed), `k` (1 to 10, default 5), optional `session_id`, optional `history` (see steps 9 and 10). Returns `answer`, `found`, `reason`, `citations` (`n`, `file`, `page`), `uncited`, `retrieved` (`id`, `score`, `file`, `page`), `rewritten_question` |
+| `POST /upload` | Multipart: `file`, optional `session_id` (see step 9) |
 
 Errors: invalid input returns 422. A Gemini rate limit (status 429) returns 503 with a short message. Any other failure returns 502 with a generic message. The full exception goes to the server log only.
 
-Tests: `uv run pytest -q` runs 12 tests (health, found, not found, parameters passed through, 6 validation cases, both error mappings). They fake `rag_answer`, so they check the API layer only. Retrieval and answer quality are measured by the eval scripts, not by these tests. Lint: `uv run ruff check .` and `uv run ruff format --check .` both pass on 29 files.
+## Step 9: PDF upload with per-session namespaces
 
+`POST /upload` takes one PDF per request (multipart field `file`, optional form field `session_id`). With no session id the server creates one and returns it. The page keeps it in sessionStorage and sends it with every later upload and question.
 
-## Step 9: upload and sessions
+- **Session id.** `sess_<10-digit unix time>_<16 hex>`, checked with a strict regex. `demo` is rejected as a session id, so a caller cannot pick the demo namespace or any other namespace by crafting a value.
+- **Namespaces.** Each session is one Pinecone namespace. `/query` searches the namespace named by `session_id`, or `demo` when there is none.
+- **Limits.** 4 MiB per file, 5 files per session, 800 chunks per file (a guess, not measured).
+- **Check order.** `.pdf` name, bounded read of 4 MiB (413), `%PDF` header, session id (422), duplicate name or 5 files already (409), parse (422, includes scanned PDFs with no text and encrypted PDFs), chunk cap (422), index (502).
+- **Parsing.** In memory with pypdf. Nothing is written to disk.
+- **Response.** Session id, file name, pages, chunks and files in the session.
 
-| Endpoint | Purpose |
-|---|---|
-| `POST /upload` | Multipart: `file` (one PDF), optional `session_id`. Creates a session on first upload and returns its id. |
-| `POST /query` | Optional `session_id`. With it, the question is answered from that session only. Without it, from the demo corpus. |
+One bug found here: `chunk_page` takes overlap as a fraction, and passing 20 instead of 0.20 produced 3,439 chunks for one file. Fixed in `src/indexing.py` (`OVERLAP_PCT = 0.20`).
 
-Limits: 4 MB per file, 5 files per session, one file per request, at most 800 chunks per file (a guess to bound embedding time). Our code parses each PDF from bytes in memory. The web framework may spool uploads over about 1 MB to a temporary file, which is deleted when the request ends. Session ids look like `sess_<unix_timestamp>_<16 hex chars>` and each session is its own Pinecone namespace. Queries never use a filter; isolation is by namespace only. Scanned PDFs without a text layer are rejected.
+## Step 10: multi-turn chat with follow-up rewriting
 
-**Privacy notice:** the text of uploaded PDFs is stored as vectors in Pinecone and sent to Google (Gemini) to answer questions. On the free tier, Google may use inputs to improve its products. Do not upload confidential documents.
+The browser sends the last 6 messages as `history`, and the server truncates to the last 6 again. `rewrite_question(question, history)` asks Gemini to turn a follow-up into a standalone question, which is what gets embedded and searched. With no history there is no extra call. If the rewrite call fails, the original question is used. The response carries `rewritten_question`, and the page shows it as "Searched as".
 
-## Step 10: follow-ups
-
-`POST /query` accepts `history`: up to 20 messages (`role` user or assistant, `content` up to 2,000 characters). The server keeps the last 6, rewrites the question into a standalone one with the same model (`src/rewrite.py`), and uses the rewritten question for retrieval and answering. The response includes `rewritten_question`. With no history, no rewrite call is made. If the rewrite call fails, the original question is used. Follow-up quality is not measured yet.
+Cost: one extra Gemini call per follow-up. Rewrite quality has not been measured.
 
 ## Step 11: frontend
 
-Static page in `public/` (`index.html`, `style.css`, `app.js`, no framework). Locally FastAPI serves it at `/`. Chat thread, citations panel, upload box with a progress bar, demo/My PDFs toggle, mic input (Web Speech API) and read-aloud (speech synthesis). The browser sends the last 6 messages as `history` and keeps the session id in `sessionStorage`, so a new tab starts a new session. Answers are rendered as plain text.
+Static HTML, CSS and JS in `public/`, no framework. It has a chat thread, a citations panel, an upload box with a progress bar, a demo/upload toggle, a mic button (Web Speech API) and a read-aloud button (speechSynthesis). Answers are rendered with `textContent`, so model output is never injected as HTML. Switching mode clears the history sent to the server but not the visible thread. Uploads are sequential. Mic works only in Chrome and Edge.
 
-Voice limits: the mic button appears only in browsers that support the Web Speech API (Chrome and Edge). In Chrome, the audio is processed by the browser vendor's speech service, not by this app. Read-aloud voices depend on the operating system. Not tested on mobile.
+## Step 12: deployment, cron cleanup, CI
+
+**Hosting.** Vercel finds `src/app.py` as the FastAPI entrypoint. The whole app is one function. `public/` is served from the CDN, so the `StaticFiles` mount in `src/app.py` runs only when the `VERCEL` environment variable is unset. Environment variables in Vercel: `PINECONE_API_KEY`, `PINECONE_INDEX`, `GEMINI_API_KEY`, `LLM_MODEL`, `CRON_SECRET`, `MODEL_CACHE_DIR=/tmp/model_cache`, `HF_HOME=/tmp/hf`.
+
+**Model file.** The model (91,104,077 bytes, about 87 MiB) is downloaded into `/tmp` on the first request after a cold start, because the deploy folder is read-only. That request is slow. The time was not measured.
+
+**Cleanup.** `vercel.json` schedules `GET /api/cron/cleanup` daily at 03:00 UTC. The route requires `Authorization: Bearer <CRON_SECRET>`, lists namespaces, and deletes those whose names match the session pattern and are older than 24 hours. `demo` never matches the pattern. With a daily schedule a session can live up to about 48 hours.
+
+**CI.** `.github/workflows/ci.yml` runs `uv sync --frozen`, `ruff check`, `ruff format --check` and `pytest -q` on Python 3.12.
+
+**Checked on the deployed URL.** 5 files accepted and a 6th rejected (409). Two sessions are isolated. The cron route returns 401 without the secret and 200 with it. A fake namespace with a 2001 timestamp was deleted and `demo` was kept.
+
+**Limits checked against current docs (2026-10-29).** Vercel request and response body: 4.5 MB (so the 4 MiB upload limit stays). Python function bundle: 500 MB uncompressed. Cron runs on production deployments only. Pinecone Starter plan: 100 namespaces per index, 2 GB storage, 2M write units and 1M read units per month. Two points come from third-party pages and were not confirmed in the Vercel dashboard or docs: a 300 s function duration on Hobby with Fluid compute, and daily-only cron on Hobby.
+
+## Changes found during deployment
+
+Four problems appeared only on the live site. Each was found in the Vercel logs or with one request, then fixed.
+
+1. **Read-only filesystem.** Every question returned "The answer service failed." The log showed fastembed failing with "Read-only file system" while downloading the model. Fix: the model cache moves to `/tmp`. The first fix assumed the `VERCEL` variable and still failed. The second checks whether the folder is writable.
+2. **Pinecone list objects.** The fourth upload failed in every session with `AttributeError: 'ListItem' object has no attribute 'rsplit'`. The SDK returns objects with `.id`, and the code treated them as strings. The tests faked the whole function, so the real code never ran. Fix: read `.id`, and a test now runs the real function against a fake that returns objects.
+3. **Score gate.** A short CV PDF returned "Not found" for a leadership question. `/query` showed `reason: "gate"` with a best score of 0.198 against a gate of 0.2. The gate is now 0.10. The off-topic jollof rice question scored 0.247 to 0.290 against the arXiv papers, so the gate could not separate on-topic from off-topic anyway. The model's `NOT_FOUND` reply is the real guard. 0.10 is a guess based on one short document.
+4. **All-or-nothing prompt.** "What is the graduation date and the final grade?" refused although the chunk with the CGPA was among the 5 retrieved (the question "What is the CGPA?" returned `4.59/5.00 [1]`). The prompt said to reply `NOT_FOUND` unless the passages answered the question. Now it may answer the supported part and name what is missing. On the live site the answer cited the grade and said the date is not stated. Checked on one document.
+
+## Monitoring (step 13, in progress)
+
+Each `/query` and `/upload` call writes one JSON log line with event, path, status and milliseconds. Question text and document text are not logged. Planned: top retrieval score, chunks used, `reason` and LLM error type per query. Search the Vercel logs for `"event": "request"`.
+
+## Screenshots
+
+Planned for step 13: a cited answer, the upload box, the citations panel, and a "not found" case.
 
 ## Known limits so far
 
-- The answer results rest on 17 questions scored by one person (see step 7). Retrieval hit rate is on 18 questions.
-- 6 of 17 RAG answers were refusals. 3 are explained (answer text not in the retrieved chunks) and 3 (q03, q07, q16) are not.
+- The answer results rest on 17 questions scored by one person (see step 7). Retrieval hit rate is on 18 questions. Both predate the step 12 changes to the score gate and prompt.
+- 6 of 17 RAG answers were refusals. 3 are explained (answer text not in the retrieved chunks) and 3 (q03, q07, q16) are not. The prompt change may explain some. Not checked.
 - Page-level hit rate overstates how often the answer reaches the model: q13 counted as a hit although no retrieved chunk contained the answer.
-- `MIN_SCORE` is 0.2 and uncalibrated. In one off-topic test the top scores were 0.247 to 0.290, so the gate did not filter that question. It filtered none of the 18 evaluation questions. Short, list-style text such as a CV scored 0.09 to 0.14 on a generic question, so the gate can also reject questions that are on topic.
+- `MIN_SCORE` is 0.10 and uncalibrated, set from one short document. The partial-answer prompt was checked on one question.
 - The baseline comparison is weak by design: the questions name papers a model cannot know without retrieval.
 - Both systems use a small model, gemini-3.5-flash-lite.
 - `pypdf` drops spaces and splits hyphenated words on some pages (retrieved passages showed "factualgrounding", "fortesting" and "guide- lines"). Not yet quantified or fixed. Changing extraction means re-indexing.
-- Two-column layouts can interleave columns. Not yet checked, and likely common in arXiv papers.
-- Scanned PDFs without a text layer produce no pages, and uploads of them are rejected.
-- The corpus is whatever the arXiv query returned on the day it was run. `data/manifest.json` records which papers were used.
-- Google may use free-tier Gemini inputs to improve its products. The upload box and the step 9 section carry a notice that uploaded text is sent to Google.
-- Gemini free-tier limits are shown only in AI Studio and change; gemini-2.5-flash stopped being available to new users on 2026-10-15. Not yet verified: Vercel bundle size and cold start with onnxruntime and the model file, Vercel body size and timeout limits, Pinecone free-tier limits. All checked against current docs at step 12.
 - pypdf glues table cells together ("0.7790.594", "86.4098.15100.00"), so numeric tables embed and match poorly.
+- Two-column layouts can interleave columns. Not yet checked, and likely common in arXiv papers.
 - Some pages contain garbled characters ("ΓÇó", "QueryΓåÆTop-k"). Cause not yet found (PDF or extraction).
-- Reference-list pages are indexed and can take top-k slots (seen once in a smoke test). Not measured as a cause of any miss here.
-- `/query` and `/upload` have no rate limiting or authentication. Anyone with the URL can use the Gemini free quota and fill the Pinecone free tier.
-- A rate-limited request can wait up to 75 s inside `llm.py` retries (5 + 10 + 20 + 40 s) before the API answers 503. Not yet checked against Vercel's function timeout.
+- Scanned PDFs without a text layer produce no pages, and uploads of them are rejected (422).
+- Reference-list pages are indexed and can take top-k slots. Not measured as a cause of any miss here.
+- The corpus is whatever the arXiv query returned on the day it was run. `data/manifest.json` records which papers were used.
+- **Privacy.** Text from uploaded PDFs and from questions is sent to Google (Gemini free tier), and Google may use free-tier inputs to improve its products. Do not upload documents you cannot share. The upload box should carry the same notice (verify in the page).
+- **Access control.** The session id is the only access control. Anyone holding it can query and upload to that session. `/query` and `/upload` have no rate limiting or authentication, so anyone with the URL can use the Gemini free quota.
+- **Namespace cap.** The Pinecone free plan allows 100 namespaces per index, and `demo` uses one. A burst of about 99 new sessions in a day could block uploads until the next cleanup. No cap is built.
+- **Cleanup delay.** Cleanup runs daily, so a session can live up to about 48 hours.
+- **Cold start.** The first request after a cold start downloads the model. Time not measured.
+- **Eventual consistency.** Pinecone list is eventually consistent: rapid uploads can exceed 5 files or repeat a file name.
+- **Timeouts.** A rate-limited request can wait up to 75 s inside `llm.py` retries (5 + 10 + 20 + 40 s) before the API answers 503. Not checked against the function duration on this plan.
+- **Rewrite cost and quality.** Each follow-up adds one Gemini call, and follow-up quality is not measured.
+- **Frontend.** Switching mode clears history but not the visible thread. Uploads are sequential. Mic works only in Chrome and Edge. Not tested on mobile.
 - Error mapping reads a `.code` attribute on the exception. It depends on how google-genai reports errors.
-- The question limit (500 characters) and k limit (10) are guesses, not tuned.
-- The 5-file and duplicate-name checks count files by listing Pinecone ids, which is eventually consistent. Two rapid uploads can exceed 5 files or repeat a name.
-- The session id is the only access control. Anyone who has an id can query that session.
-- Expired sessions are not deleted yet (cron job planned in step 12).
-- The 800-chunk cap per file is a guess, not measured.
-- Each follow-up costs one extra Gemini call, which uses the free quota faster. Follow-up quality is not measured.
-- The frontend and the upload flow were checked by hand only, not by automated browser tests. Mic needs Chrome or Edge. Not tested on mobile.
-- Switching between demo and uploads clears the chat history sent to the server but not the visible thread. Uploads go one file at a time.
+- The question limit (500 characters), k limit (10) and chunk cap per file (800) are guesses, not tuned.
+- `src/index_corpus.py` still has its own indexing loop and constants and has not been moved onto `index_pages`.
+- Starlette warns that `TestClient` with httpx is deprecated. Not acted on.
 
 ## Decisions log
 
-See [DECISIONS.md](DECISIONS.md) for the full list, including the embedding change, the chunk size change, the LLM model change and the evaluation choices.
+See [DECISIONS.md](DECISIONS.md) for the full list, including the embedding change, the chunk size change, the LLM model change, the evaluation choices and the deployment decisions.
 
 ## License
 

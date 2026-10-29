@@ -93,22 +93,78 @@ Revisit if: the question set grows, an independent scorer is available, or quest
 
 **Lint policy.** `SIM115` is ignored for `eval/**` only (short scripts that exit after reading). `B023` in `eval/auto_score.py` was fixed by binding `pats` as a default argument. Formatting changes to 26 files went in a separate commit so the step 8 diff stays readable.
 
-## Step 9: sessions and uploads
 
-**Session ids are validated and never free text.** `session_id` must match `sess_<10 digits>_<16 hex>`, so a caller cannot pass `demo` or any other namespace name. The timestamp in the id is what the step 12 cron job will use to find sessions older than 24 hours. Cost: the id is a bearer secret. Anyone who has it can query that session.
+## Steps 9 to 12: uploads, chat, frontend, deployment
 
-**Isolation is by namespace, with no metadata filter.** Each session is its own Pinecone namespace and `/query` passes it as the namespace. The isolation test uses a fake store, so it checks routing, not Pinecone itself. Real cross-session isolation is tested at step 12 on the deployed app.
+Date of the deployment decisions: 2026-10-29. Append this block to the end of DECISIONS.md.
 
-**File counts come from Pinecone, not a database.** The 5-file limit and the duplicate-name check list vector ids in the session namespace and read the file name from the id. This avoids running a database. Cost: listing is eventually consistent, so two fast uploads can slip past the limit.
+### Session ids and namespaces
+**Decision.** A session is a Pinecone namespace named `sess_<10-digit unix time>_<16 hex>`. The server creates it on the first upload and returns it. The browser keeps it in sessionStorage. Every query is routed to `session_id` or, if absent, to `demo`. A strict regex validates the id, and `demo` is rejected as a session id.
+**Why.** The timestamp lets the cleanup job read a session's age from its name with no database. The strict regex means a caller cannot pick another namespace by sending a crafted value.
+**Cost.** The id is the only access control. Anyone holding it can query and upload to that session.
 
-**Limits are guesses until measured.** 4 MB per file comes from the brief. 800 chunks per file bounds embedding time and is not measured. Revisit at step 12 with real embedding times and the Vercel body and timeout limits.
+### Upload limits and check order
+**Decision.** One file per request, 4 MiB, 5 files per session, 800 chunks per file. Checks run in this order: `.pdf` name, bounded read (413), `%PDF` header, session id (422), duplicate name or 5 files (409), parse (422, includes scanned and encrypted PDFs), chunk cap (422), index (502).
+**Why.** Cheap checks run before the expensive ones. The 800-chunk cap is a guess, not a measurement.
 
-**Bug found while testing: overlap unit.** `chunk_page` takes a fraction (0.20), and the first upload code passed 20. That made the window advance one character at a time and produced 3,439 chunks for a short PDF. Fixed to 0.20. The 800-chunk cap made the mistake visible instead of silently filling Pinecone.
+### Overlap passed as a fraction
+**Decision.** `chunk_page` takes overlap as a fraction (0.20). Passing 20 produced 3,439 chunks for one file, so upload indexing now uses `OVERLAP_PCT = 0.20`.
+**Why.** Found during step 9. `index_corpus.py` still has its own loop and constants and has not been moved onto `index_pages`.
 
-## Step 10: follow-ups
+### Follow-up rewriting
+**Decision.** `rewrite_question(question, history)` makes one Gemini call, only when history exists. The browser sends the last 6 messages, and the server truncates to the last 6 again. If the rewrite call fails, the original question is used. The response carries `rewritten_question` and the UI shows it as "Searched as".
+**Why.** Retrieval needs a standalone question. A failed rewrite should degrade to a normal query, not an error.
+**Cost.** One extra Gemini call per follow-up. Rewrite quality is not measured.
 
-**Rewrite with the same model, fall back to the original question.** A follow-up is rewritten into a standalone question before retrieval. With no history, no call is made. If the rewrite fails, the original question is used, so a rewrite failure never blocks an answer. The server keeps the last 6 messages regardless of what the browser sends (up to 20 accepted). Cost: one extra Gemini call per follow-up. Quality of the rewrites is not measured.
+### Frontend without a framework
+**Decision.** Static HTML, CSS and JS in `public/`. Answers are rendered with `textContent`, uploads use XHR for progress, mic uses the Web Speech API, read-aloud uses speechSynthesis.
+**Why.** One page, no build step, and the build guide said to pick one approach and not mix frameworks. `textContent` avoids injecting model output as HTML.
+**Cost.** Mic works only in Chrome and Edge. Not tested on mobile.
 
-## Step 11: frontend
+### Vercel entrypoint
+**Decision.** `src/app.py` is the entrypoint, found by Vercel automatically. `api/index.py` was deleted. `public/` is served by the CDN, so the `StaticFiles` mount runs only when the `VERCEL` environment variable is unset.
+**Why.** The Vercel FastAPI docs list `src/app.py` as a recognized entrypoint and say a manual static mount is not needed. Two entrypoints risked a conflict.
 
-**Plain static files, no framework.** One page, three files, no build step. Answers and file names are rendered with `textContent`, never `innerHTML`, so model output cannot inject HTML. The session id lives in `sessionStorage`, so each tab is its own session. Cost: no component structure, and the voice features depend on browser support.
+### Embedding model downloaded to /tmp, not bundled
+**Decision.** On Vercel the model downloads into `/tmp/model_cache` on the first request after a cold start. `_cache_dir()` uses `MODEL_CACHE_DIR` if set, else `data/model_cache` if writable, else the system temp directory. Vercel env vars: `MODEL_CACHE_DIR=/tmp/model_cache`, `HF_HOME=/tmp/hf`.
+**Why.** The deploy folder is read-only and `data/model_cache` is gitignored. The first deploy failed with "Read-only file system" in the Vercel log. The model is 91,104,077 bytes across 9 files (about 87 MiB), which would fit in the repo, but committing it was not needed to make the deploy work.
+**Cost.** The first request after a cold start is slow. The time was not measured. If it is too slow, bundle the model.
+**What I got wrong first.** The first fix relied on the `VERCEL` variable to pick the path, and the deploy still failed. The second version checks whether the folder is writable.
+
+### Reading Pinecone list results
+**Decision.** `list_session_files` reads `getattr(vid, "id", vid)`.
+**Why.** The Pinecone SDK returns objects with an `.id` attribute, not strings. The fourth upload failed in every session with `AttributeError: 'ListItem' object has no attribute 'rsplit'`. The earlier tests replaced the whole function with a fake, so the real code never ran. `tests/test_indexing_list.py` now runs the real function against a fake index that returns objects with `.id`.
+
+### MIN_SCORE lowered from 0.2 to 0.10
+**Decision.** The score gate is 0.10.
+**Why.** A short CV PDF scored 0.16 to 0.32 on its own questions, and the best chunk for a leadership question scored 0.198, so the 0.2 gate dropped every chunk and returned "Not found" although the answer was in the file. The off-topic jollof rice question scored 0.247 to 0.290 against the arXiv papers, so the gate could not separate on-topic from off-topic anyway. The model's `NOT_FOUND` reply is the real guard against answering from outside the chunks. The 18 evaluation questions scored 0.49 to 0.73 and were never gated, so step 7 results do not change.
+**Cost.** Questions the old gate blocked now cost one Gemini call. 0.10 is a guess based on one short document and is not calibrated.
+
+### Partial answers allowed in the RAG prompt
+**Decision.** Rule 3 of the system prompt now says: if the passages answer only part of the question, answer that part with citations and add one sentence naming what the passages do not state; never guess the missing part. `NOT_FOUND` is only for no answer to any part.
+**Why.** "What is the graduation date and the final grade?" refused with `reason: "model"` although the CGPA chunk was among the 5 retrieved chunks (the question "What is the CGPA?" returned `4.59/5.00 [1]`). After the change the answer cited the grade and said the date is not stated. Checked live on one document.
+**What it may explain.** Some of the three unexplained step 6 refusals (q03, q07, q16) may have the same cause. Not checked.
+**Effect on results.** The step 7 table was produced with the old prompt and the old gate. The README says so. Rerunning `eval/rag_answers.py` and rescoring would update it.
+
+### Cleanup job
+**Decision.** `GET /api/cron/cleanup`, triggered by Vercel Cron daily at 03:00 UTC (`0 3 * * *`). It lists namespaces from `describe_index_stats()`, keeps only names matching the strict session regex, and deletes those older than 24 hours. The route requires `Authorization: Bearer <CRON_SECRET>` and compares with `hmac.compare_digest`. With no `CRON_SECRET` set it rejects every request.
+**Why.** The session regex never matches `demo`, so `demo` cannot be deleted. Reading age from the name needs no database.
+**Cost.** A daily schedule means a session can live up to about 48 hours. A third-party page says Hobby cron runs once a day. I did not confirm that in the Vercel docs.
+**Verified.** 401 without the header, 200 with it, a fake 2001 namespace deleted, `demo` kept.
+
+### CI
+**Decision.** One GitHub Actions job on pushes to main and on pull requests: `uv sync --frozen`, `ruff check`, `ruff format --check`, `pytest -q`, Python 3.12.
+**Why.** The same three checks I run locally, one per line, because a chained command once let a failing check pass.
+
+### No per-IP rate limit, no namespace cap for now
+**Decision.** Neither is built. Both are listed as known limits.
+**Why.** A Vercel function keeps no state between calls, so a real limiter needs extra storage. The Pinecone free plan allows 100 namespaces per index and `demo` uses one, so a burst of about 99 new sessions in one day could block uploads until the next cleanup. A namespace cap in `/upload` is the cheap next step.
+**Cost.** Anyone with the URL can use the Gemini free quota.
+
+### Structured request logs
+**Decision.** One JSON log line per `/query` and `/upload` call with event, path, status and milliseconds. Question text and document text are not logged.
+**Why.** Uploads are private. Retrieval fields (top score, chunks used, reason) and LLM error type are the next addition.
+
+### Limits checked against current docs on 2026-10-29
+- Vercel: request and response body 4.5 MB, so the 4 MiB upload limit stays. Python function bundle 500 MB uncompressed. FastAPI apps run as one function on Fluid compute by default. A third-party page reports 300 s default and maximum duration on Hobby, which I did not confirm in the dashboard. Cron runs on production deployments only.
+- Pinecone Starter: 100 namespaces per serverless index, 2 GB storage, 2M write units and 1M read units per month.
