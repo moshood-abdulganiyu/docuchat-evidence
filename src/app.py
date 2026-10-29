@@ -1,13 +1,12 @@
+import hmac
 import logging
-
-from pathlib import Path
-
-from fastapi.staticfiles import StaticFiles
-
+import os
 from typing import Annotated
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi.staticfiles import StaticFiles
 
+from src.cleanup import delete_expired
 from src.indexing import ChunkLimitError, index_pages, list_session_files
 from src.models import HealthResponse, QueryRequest, QueryResponse, UploadResponse
 from src.pdf_pages import extract_pages, safe_filename
@@ -127,6 +126,18 @@ def upload(
     )
 
 
-_PUBLIC = Path(__file__).resolve().parent.parent / "public"
-if _PUBLIC.is_dir():
-    app.mount("/", StaticFiles(directory=_PUBLIC, html=True), name="static")
+@app.get("/api/cron/cleanup", include_in_schema=False)
+def cron_cleanup(authorization: str | None = Header(default=None)):
+    secret = os.environ.get("CRON_SECRET")
+    expected = f"Bearer {secret}" if secret else None
+    if (
+        not expected
+        or not authorization
+        or not hmac.compare_digest(authorization, expected)
+    ):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return delete_expired()
+
+
+if not os.environ.get("VERCEL"):
+    app.mount("/", StaticFiles(directory="public", html=True), name="public")
