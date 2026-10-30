@@ -4,7 +4,9 @@ RAG app that answers questions over PDFs and cites the file name and page number
 
 **Live:** https://docuchat-evidence.vercel.app (interactive API docs at `/docs`)
 
-> Steps 1 to 12 are built and deployed. Step 13 (monitoring, screenshots, final polish) is in progress. The retrieval and answer results below come from a small question set (17 to 18 questions), so read them as a first measurement, not a benchmark. The evaluation was run before two changes made during deployment (score gate 0.2 to 0.10, and a prompt that allows partial answers), so the table describes the earlier version. See "Changes found during deployment".
+![A cited answer in demo mode, light theme](screenshots/chat-citations-light.png)
+
+> All 13 steps are built and deployed. The retrieval and answer results below come from a small question set (17 to 18 questions), so read them as a first measurement, not a benchmark. The evaluation was run before two changes made during deployment (score gate 0.2 to 0.10, and a prompt that allows partial answers), so the table describes the earlier version. See "Changes found during deployment".
 
 ## Status
 
@@ -20,7 +22,7 @@ RAG app that answers questions over PDFs and cites the file name and page number
 - [x] 10. Multi-turn chat with follow-up rewriting
 - [x] 11. Frontend
 - [x] 12. Deploy on Vercel, cron cleanup, CI
-- [ ] 13. Monitoring, README, screenshots (request logs done; retrieval and LLM error fields and screenshots planned)
+- [x] 13. Monitoring, README, screenshots
 
 ## Problem
 
@@ -109,7 +111,8 @@ docuchat-evidence/
     pdfs/                downloaded PDFs (gitignored)
     pages.jsonl          extracted text, one line per page (gitignored)
     model_cache/         embedding model files (gitignored)
-  tests/                 test_api, test_upload, test_chat, test_static, test_cleanup, test_cron, test_indexing_list
+  tests/                 test_api, test_upload, test_chat, test_static, test_cleanup, test_cron, test_indexing_list, test_query_logging
+  screenshots/           six PNGs: chat-citations, not-found, upload-box, each in light and dark
   .github/workflows/ci.yml
   vercel.json            cron schedule
   DECISIONS.md           decisions with reasoning
@@ -393,13 +396,29 @@ Four problems appeared only on the live site. Each was found in the Vercel logs 
 3. **Score gate.** A short CV PDF returned "Not found" for a leadership question. `/query` showed `reason: "gate"` with a best score of 0.198 against a gate of 0.2. The gate is now 0.10. The off-topic jollof rice question scored 0.247 to 0.290 against the arXiv papers, so the gate could not separate on-topic from off-topic anyway. The model's `NOT_FOUND` reply is the real guard. 0.10 is a guess based on one short document.
 4. **All-or-nothing prompt.** "What is the graduation date and the final grade?" refused although the chunk with the CGPA was among the 5 retrieved (the question "What is the CGPA?" returned `4.59/5.00 [1]`). The prompt said to reply `NOT_FOUND` unless the passages answered the question. Now it may answer the supported part and name what is missing. On the live site the answer cited the grade and said the date is not stated. Checked on one document.
 
-## Monitoring (step 13, in progress)
+## Monitoring (step 13)
 
-Each `/query` and `/upload` call writes one JSON log line with event, path, status and milliseconds. Question text and document text are not logged. Planned: top retrieval score, chunks used, `reason` and LLM error type per query. Search the Vercel logs for `"event": "request"`.
+Logs are JSON lines written by `src/logs.py` and read in the Vercel logs. They hold counts, scores, timings and error types. Question text, answer text, file names and session ids are never logged. Two tests (`tests/test_query_logging.py`) check that the question and answer text do not appear in the events.
+
+| Event | Written by | Fields |
+|---|---|---|
+| `request` | middleware, for `/query` and `/upload` | `path`, `status`, `ms` (whole request) |
+| `query` | `/query`, on success | `mode` (demo or session), `found`, `reason`, `k`, `retrieved`, `top_score`, `cited`, `uncited`, `rewritten`, `rewrite_ms`, `rag_ms` |
+| `query_error` | `/query`, on failure | `mode`, `error_type` (exception class name), `error_code` (integer or null) |
+
+To find them, search the Vercel logs for `"event": "query"` or `"event": "query_error"`.
+
+**Latency seen on the live site.** Four demo questions took 1,385, 1,458, 2,278 and 2,494 ms end to end. For one follow-up, the rewrite took 604 ms and retrieval plus the answer took 853 ms, so the rewrite was 41% of that request. Four samples are not a benchmark, and I did not record which requests were cold starts. Cold-start time was not measured.
 
 ## Screenshots
 
-Planned for step 13: a cited answer, the upload box, the citations panel, and a "not found" case.
+Demo mode, light and dark themes. Each pair shows the same state.
+
+| | Light | Dark |
+|---|---|---|
+| A cited answer with the sources panel | ![Cited answer, light](screenshots/chat-citations-light.png) | ![Cited answer, dark](screenshots/chat-citations-dark.png) |
+| A question the documents cannot answer | ![Not found, light](screenshots/not-found-light.png) | ![Not found, dark](screenshots/not-found-dark.png) |
+| Upload box after three PDFs | ![Upload box, light](screenshots/upload-box-light.png) | ![Upload box, dark](screenshots/upload-box-dark.png) |
 
 ## Known limits so far
 
