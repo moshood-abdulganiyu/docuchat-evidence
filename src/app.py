@@ -1,9 +1,7 @@
-import time
-from src.logs import event
-
 import hmac
 import logging
 import os
+import time
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
@@ -11,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from src.cleanup import delete_expired
 from src.indexing import ChunkLimitError, index_pages, list_session_files
+from src.logs import event
 from src.models import HealthResponse, QueryRequest, QueryResponse, UploadResponse
 from src.pdf_pages import extract_pages, safe_filename
 from src.rag import rag_answer
@@ -39,15 +38,27 @@ def health() -> HealthResponse:
 def query(req: QueryRequest) -> QueryResponse:
     # session_id was validated by QueryRequest, so it can never be "demo".
     namespace = req.session_id if req.session_id else DEMO_NAMESPACE
+    # The session id is the only access control, so it is never logged.
+    mode = "demo" if namespace == DEMO_NAMESPACE else "session"
     history = req.history[-MAX_HISTORY:]
+    t0 = time.perf_counter()
     try:
         standalone = (
             rewrite_question(req.question, history) if history else req.question
         )
+        t1 = time.perf_counter()
         result = rag_answer(standalone, namespace=namespace, k=req.k)
+        t2 = time.perf_counter()
     except Exception as exc:
+        code = getattr(exc, "code", None)
         log.exception("query failed")
-        if getattr(exc, "code", None) == 429:
+        event(
+            "query_error",
+            mode=mode,
+            error_type=type(exc).__name__,
+            error_code=code if isinstance(code, int) else None,
+        )
+        if code == 429:
             raise HTTPException(
                 status_code=503,
                 detail="The language model is rate limited. Try again in a minute.",
@@ -55,6 +66,23 @@ def query(req: QueryRequest) -> QueryResponse:
         raise HTTPException(
             status_code=502, detail="The answer service failed. Try again."
         )
+
+    # Counts, scores and timings only. No question, answer or document text.
+    scores = [r["score"] for r in result["retrieved"]]
+    event(
+        "query",
+        mode=mode,
+        found=result["found"],
+        reason=result["reason"],
+        k=req.k,
+        retrieved=len(scores),
+        top_score=round(max(scores), 3) if scores else None,
+        cited=len(result["citations"]),
+        uncited=result["uncited"],
+        rewritten=bool(history),
+        rewrite_ms=round((t1 - t0) * 1000),
+        rag_ms=round((t2 - t1) * 1000),
+    )
     return QueryResponse(
         answer=result["answer"],
         found=result["found"],
@@ -153,6 +181,7 @@ async def access_log(request, call_next):
         ms = round((time.perf_counter() - start) * 1000)
         event("request", path=request.url.path, status=response.status_code, ms=ms)
     return response
+
 
 if not os.environ.get("VERCEL"):
     app.mount("/", StaticFiles(directory="public", html=True), name="public")
