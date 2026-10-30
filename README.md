@@ -1,6 +1,10 @@
 # DocuChat Evidence
 
-RAG app that answers questions over PDFs and cites the file name and page number for every answer. Demo mode runs over 30 recent arXiv papers, or you upload up to 5 PDFs (4 MB each) into a private session. FastAPI, Pinecone, all-MiniLM-L6-v2 embeddings, Gemini, Vercel. Includes a RAG vs no-retrieval baseline comparison, with retrieval metrics and answer metrics reported separately.
+**What it does:** answers questions over 30 arXiv papers or up to 5 uploaded PDFs, and cites file name and page for every answer.
+**Demo:** https://docuchat-evidence.vercel.app (the first request after idle can be slow while the embedding model loads)
+**Headline result:** first evaluation, 17 hand-scored questions: RAG 11 correct and 0 wrong; the same model without retrieval 0 correct (16 abstained). Correct page in the top 5 for 16 of 18 questions.
+**Stack:** Python, FastAPI, Pinecone, all-MiniLM-L6-v2 (fastembed), Gemini, Vercel, GitHub Actions
+**Status:** all 13 build steps are deployed. The evaluation was run before the score gate and prompt changes and has not been rerun.
 
 **Live:** https://docuchat-evidence.vercel.app (interactive API docs at `/docs`)
 
