@@ -10,7 +10,6 @@
 
 **Status:** all 13 build steps are deployed. The evaluation was run before the score gate and prompt changes and has not been rerun.
 
-**Live:** https://docuchat-evidence.vercel.app (interactive API docs at `/docs`)
 
 ![A cited answer in demo mode, light theme](screenshots/chat-citations-light.png)
 
