@@ -4,22 +4,45 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DocuChat Evidence</title>
+  <script>
+    /* Apply saved theme before paint to avoid a flash */
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (_) { document.documentElement.setAttribute("data-theme", "light"); }
+    })();
+  </script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>DocuChat Evidence</h1>
-    <div class="toggle" role="group" aria-label="Source">
-      <button id="mode-demo" class="active" type="button">Demo papers</button>
-      <button id="mode-upload" type="button">My PDFs</button>
+  <div class="bg" aria-hidden="true"><span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span></div>
+
+  <header class="glass topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+      </span>
+      <h1>DocuChat <span>Evidence</span></h1>
+    </div>
+    <div class="actions">
+      <div class="toggle" role="group" aria-label="Source">
+        <button id="mode-demo" class="active" type="button">Demo papers</button>
+        <button id="mode-upload" type="button">My PDFs</button>
+      </div>
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Switch to dark mode" title="Switch theme"></button>
     </div>
   </header>
 
   <main>
-    <section class="chat">
+    <section class="chat glass">
       <div id="upload-box" class="upload" hidden>
         <label class="drop">
           <input id="file-input" type="file" accept="application/pdf" multiple>
+          <span class="drop-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+          </span>
           <span>Choose PDFs (max 5 per session, 4 MB each)</span>
         </label>
         <progress id="progress" max="100" value="0" hidden></progress>
@@ -44,13 +67,13 @@
       <div class="composer">
         <input id="question" type="text" maxlength="500"
                placeholder="Ask a question (max 500 characters)" autocomplete="off">
-        <button id="mic" type="button" title="Speak your question" hidden>Mic</button>
-        <button id="send" type="button">Send</button>
+        <button id="mic" class="icon-btn" type="button" title="Speak your question" aria-label="Speak your question" hidden></button>
+        <button id="send" class="send-btn" type="button" aria-label="Send question" title="Send"></button>
       </div>
       <p id="error" class="error" role="alert" hidden></p>
     </section>
 
-    <aside class="sources">
+    <aside class="sources glass">
       <h2>Sources</h2>
       <p id="sources-empty" class="small">Citations for the selected answer appear here.</p>
       <ol id="sources-list"></ol>

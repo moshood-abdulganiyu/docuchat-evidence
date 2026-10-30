@@ -19,6 +19,7 @@ SYSTEM = (
     "(6) Passages come from PDF extraction and may have missing spaces or glued table cells."
 )
 
+
 def build_prompt(question: str, chunks: list[dict]) -> str:
     blocks = [
         f"[{i}] (file: {c['file']}, page {c['page']})\n{c['text']}"
