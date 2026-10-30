@@ -14,7 +14,8 @@ Current choices are in the summary. Each entry below says what was decided, why,
 - Sessions: `sess_<unix_timestamp>_<16 hex>` namespaces, strict regex, isolation by namespace only
 - Upload limits: 1 file per request, 4 MB, 5 files per session, 800 chunks per file
 - Chat history: browser sends up to 20 messages, server keeps the last 6, follow-ups rewritten with the same model
-- Frontend: plain HTML, CSS and JavaScript in `public/`, no framework
+- Frontend: plain HTML, CSS and JavaScript in `public/`, no framework, light and dark themes
+- Logs: JSON events for requests, queries and query errors, counts and timings only, no text
 
 ## Embeddings: local fastembed instead of the Hugging Face API
 Decision: embed locally with fastembed (Qdrant/all-MiniLM-L6-v2-onnx), cache in data/model_cache.
@@ -121,6 +122,11 @@ Date of the deployment decisions: 2026-10-29. Append this block to the end of DE
 **Why.** One page, no build step, and the build guide said to pick one approach and not mix frameworks. `textContent` avoids injecting model output as HTML.
 **Cost.** Mic works only in Chrome and Edge. Not tested on mobile.
 
+### Frontend restyle with light and dark themes
+**Decision.** `index.html`, `style.css` and `app.js` were restyled with a light and a dark theme. A header button switches them, the choice is saved in the browser, and a first visit follows the system setting. Element IDs, API calls, upload logic and chat logic were not changed.
+**Why.** The first version was plain. The README screenshots are taken in both themes.
+**Cost.** The restyle was checked for JavaScript syntax errors, then in a browser on the live site. Not tested on mobile. Animations turn off when the visitor has reduced motion set.
+
 ### Vercel entrypoint
 **Decision.** `src/app.py` is the entrypoint, found by Vercel automatically. `api/index.py` was deleted. `public/` is served by the CDN, so the `StaticFiles` mount runs only when the `VERCEL` environment variable is unset.
 **Why.** The Vercel FastAPI docs list `src/app.py` as a recognized entrypoint and say a manual static mount is not needed. Two entrypoints risked a conflict.
@@ -161,9 +167,11 @@ Date of the deployment decisions: 2026-10-29. Append this block to the end of DE
 **Why.** A Vercel function keeps no state between calls, so a real limiter needs extra storage. The Pinecone free plan allows 100 namespaces per index and `demo` uses one, so a burst of about 99 new sessions in one day could block uploads until the next cleanup. A namespace cap in `/upload` is the cheap next step.
 **Cost.** Anyone with the URL can use the Gemini free quota.
 
-### Structured request logs
-**Decision.** One JSON log line per `/query` and `/upload` call with event, path, status and milliseconds. Question text and document text are not logged.
-**Why.** Uploads are private. Retrieval fields (top score, chunks used, reason) and LLM error type are the next addition.
+### Structured logs
+**Decision.** Three JSON events through `src/logs.py`. `request` for every `/query` and `/upload` call (path, status, ms). `query` for each answered question (mode, found, reason, k, retrieved, top_score, cited, uncited, rewritten, rewrite_ms, rag_ms). `query_error` for each failure (mode, error_type, error_code). Question text, answer text, file names and session ids are never logged.
+**Why.** Uploads are private, and the session id is the only access control, so it stays out of the logs too. Timings are split so the cost of the follow-up rewrite is visible. `tests/test_query_logging.py` checks that the question and answer text do not appear in the events.
+**What it showed.** Four demo questions took 1,385 to 2,494 ms end to end. In one follow-up the rewrite took 604 ms and retrieval plus the answer took 853 ms.
+**Cost.** Four samples, and which requests were cold starts was not recorded. Cold-start time is still not measured. The error log does not keep the exception message, only its class name, so a new failure may need the full traceback in the Vercel log.
 
 ### Limits checked against current docs on 2026-10-29
 - Vercel: request and response body 4.5 MB, so the 4 MiB upload limit stays. Python function bundle 500 MB uncompressed. FastAPI apps run as one function on Fluid compute by default. A third-party page reports 300 s default and maximum duration on Hobby, which I did not confirm in the dashboard. Cron runs on production deployments only.
