@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-import src.indexing as indexing
+from src import indexing
 
 
 class FakeIndex:
